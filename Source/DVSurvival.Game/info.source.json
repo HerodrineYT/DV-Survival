@@ -1,0 +1,12 @@
+{
+  "Id": "DVSurvival",
+  "DisplayName": "Survival Needs",
+  "Author": "Herodrine_",
+  "Version": "0.9.22",
+  "AssemblyName": "DVSurvival.dll",
+  "EntryMethod": "DVSurvival.Mod.Main.Load",
+  "ManagerVersion": "0.32.4",
+  "MultiplayerCompatibility": "All",
+  "Requirements": ["custom_item_mod-0.2.0", "DVLangHelper-1.2.1"],
+  "LoadAfter": ["Multiplayer", "custom_item_mod", "DVLangHelper", "DVSeasons"]
+}

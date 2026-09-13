@@ -1,0 +1,47 @@
+{
+  "checkedAtUtc": "2026-09-13T17:08:54.007Z",
+  "derailValley": {
+    "build": 99,
+    "destination": "steam"
+  },
+  "unityModManager": {
+    "minimumVersion": "0.32.4"
+  },
+  "multiplayer": {
+    "testedVersion": "0.1.16.0",
+    "releaseFeed": "https://raw.githubusercontent.com/AMacro/dv-multiplayer/refs/heads/beta/releases.json",
+    "releasePage": "https://github.com/AMacro/dv-multiplayer/releases/tag/v0.1.16.0-Beta",
+    "downloadUrl": "https://github.com/AMacro/dv-multiplayer/releases/download/v0.1.16.0-Beta/Multiplayer.0.1.16.0.zip",
+    "archiveSha256": "d63e9508e6e8607930ee05e6e1edc77f0e4695b1cafa740eae946aee38c3406d",
+    "apiSha256": "785916b11d71bec186465ff01e28a4a74d9e96ecb2355724a254740310186546",
+    "githubReleaseFeed": "https://api.github.com/repos/AMacro/dv-multiplayer/releases?per_page=20"
+  },
+  "customItemMod": {
+    "status": "required-native-shop-items",
+    "checkedAt": "2026-09-11",
+    "auditedVersion": "0.2.0",
+    "releaseFeed": "https://raw.githubusercontent.com/t0stiman/dv_custom_item_mod/master/repository.json",
+    "downloadUrl": "https://github.com/t0stiman/dv_custom_item_mod/releases/download/v0.2.0/custom_item_mod.zip",
+    "suppliedArchiveSha256": "9ec867238fb4a06844ef8e21443cb38c28b596df108f6b5f508fadf2f26b0a1a",
+    "mainAssemblySha256": "9bbb152a1c3d78cb6f0313ddb9b5ea2485f063a5c6b0b513890c189f7319cb5b",
+    "componentsAssemblySha256": "8c080345ef43516819fa45aa032f77da093b3c3a11c893fd1be4a11e5e2074a1",
+    "hardDependency": true
+  },
+  "languageHelper": {
+    "status": "required-localization",
+    "auditedVersion": "1.2.1",
+    "releaseFeed": "https://foxden.cc/static/derail_valley/langhelper_repo.json",
+    "downloadUrl": "https://github.com/derail-valley-modding/language-helper/releases/download/v1.2.1/DVLangHelper.zip",
+    "dataAssemblySha256": "8e5a42dd49606f734b35513aaf3d396d21c7280dd30a0295a3b4b61016a1136e",
+    "runtimeAssemblySha256": "869a448a6a5fd18269ed6afc816ac129178d2ee32509f7cc0f88111979f93976",
+    "hardDependency": true
+  },
+  "dvSeasons": {
+    "integration": "optional-reflection",
+    "testedWorkspaceVersion": "0.3.30",
+    "availableWorkspaceSourceVersion": "0.3.30",
+    "mainAssemblySha256": "6ce6f64d80805ff62bda4b4aae6b59669db840d4289fc961c7e8d68c31353fad",
+    "coreAssemblySha256": "8d9eae412a2c5070b2a9b26e7d1e128a29c809c5326d57fc7657d4e21d2ed2c4",
+    "hardDependency": false
+  }
+}

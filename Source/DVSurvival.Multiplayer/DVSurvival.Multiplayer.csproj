@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <AssemblyName>DVSurvival.Multiplayer</AssemblyName>
+    <RootNamespace>DVSurvival.Multiplayer</RootNamespace>
+    <Version>0.9.22</Version>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <MultiplayerApiDll Condition="'$(MultiplayerApiDll)' == '' and Exists('$(DVSurvivalArtifactsDir)\dependencies\Multiplayer\MultiplayerAPI.dll')">$(DVSurvivalArtifactsDir)\dependencies\Multiplayer\MultiplayerAPI.dll</MultiplayerApiDll>
+    <MultiplayerApiDll Condition="'$(MultiplayerApiDll)' == ''">$(DVModsDir)\Multiplayer\MultiplayerAPI.dll</MultiplayerApiDll>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\DVSurvival.Core\DVSurvival.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Include="MultiplayerAPI"><HintPath>$(MultiplayerApiDll)</HintPath><Private>false</Private></Reference>
+    <Reference Include="Assembly-CSharp"><HintPath>$(DVManagedDir)\Assembly-CSharp.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="DV.ThingTypes"><HintPath>$(DVManagedDir)\DV.ThingTypes.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.CoreModule"><HintPath>$(DVManagedDir)\UnityEngine.CoreModule.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+</Project>

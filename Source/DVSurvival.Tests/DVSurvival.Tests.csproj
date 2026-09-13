@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5"><PrivateAssets>all</PrivateAssets></PackageReference>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\DVSurvival.Core\DVSurvival.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\DVSurvival.Multiplayer\SurvivalPackets.cs" Link="Protocol\SurvivalPackets.cs" />
+    <Compile Include="..\DVSurvival.Multiplayer\MultiplayerSurvivalBridge.SleepMode.cs" Link="Protocol\MultiplayerSurvivalBridge.SleepMode.cs" />
+    <Compile Include="..\DVSurvival.Game\ProvisionGeometry.cs" Link="Visuals\ProvisionGeometry.cs" />
+    <Compile Include="..\DVSurvival.Game\SurvivalSaveData.cs" Link="Persistence\SurvivalSaveData.cs" />
+    <Compile Include="..\DVSurvival.Game\SurvivalHud.Layouts.cs" Link="Visuals\SurvivalHud.Layouts.cs" />
+  </ItemGroup>
+</Project>
