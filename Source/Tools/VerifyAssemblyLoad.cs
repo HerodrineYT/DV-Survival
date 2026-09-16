@@ -21,6 +21,22 @@ internal static class VerifyAssemblyLoad
             Verify(Path.Combine(args[0], "DVSurvival.Core.dll"), null, null);
             if (!offline) Verify(Path.Combine(args[0], "DVSurvival.Multiplayer.dll"), null, null);
             Verify(Path.Combine(args[0], "DVSurvival.dll"), "DVSurvival.Mod.Main", "Load");
+            var itemLocalizer = Assembly.LoadFrom(Path.Combine(args[0], "DVSurvival.dll"))
+                .GetType("DVSurvival.Mod.ProvisionItemLocalizer", true);
+            var nativeLocalizer = Assembly.LoadFrom(Path.Combine(args[1], "Assembly-CSharp.dll"))
+                .GetType("IInventoryItemLocalizer", true);
+            if (!nativeLocalizer.IsAssignableFrom(itemLocalizer) ||
+                itemLocalizer.GetMethod("GetCustomDescription").ReturnType != typeof(string))
+                throw new InvalidOperationException("Per-item description must implement the native inventory localizer.");
+            Console.WriteLine("OK: per-item description implements native IInventoryItemLocalizer");
+            var bindingsAssembly = Assembly.LoadFrom(Path.Combine(args[0], "DVSurvival.dll"));
+            var settingsType = bindingsAssembly.GetType("DVSurvival.Mod.SurvivalModSettings", true);
+            if (bindingsAssembly.GetType("DVSurvival.Mod.CabControlBindings", false) != null ||
+                settingsType.GetField("HeaterButtons") != null || settingsType.GetField("FanButtons") != null)
+                throw new InvalidOperationException("Removed cab key bindings remain in the runtime.");
+            if (bindingsAssembly.GetType("DVSurvival.Mod.CabHeaterSwitchSystem", false) == null)
+                throw new InvalidOperationException("Physical cab heater controls must remain available.");
+            Console.WriteLine("OK: cab key bindings removed; physical heater controls retained");
             VerifyGameApis(args[1], offline ? null : args[3]);
             VerifyDigitalSpeedometerPatch(args[0], args[1], args[2]);
             VerifyNativeSleepPatch(args[0], args[1], args[2]);

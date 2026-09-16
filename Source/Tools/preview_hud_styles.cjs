@@ -2,6 +2,7 @@
 const fs=require('fs'),path=require('path'),sharp=require('sharp');
 const dir=path.resolve(__dirname,'../artifacts/previews/hud-styles');
 const assets=path.resolve(__dirname,'../DVSurvival.Game/Assets');
+const suffix=process.argv.includes('--alert')?'-alert':'';
 const cache=new Map();
 const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
 const rgb=c=>`rgb(${Math.round(c.r*255)},${Math.round(c.g*255)},${Math.round(c.b*255)})`;
@@ -20,7 +21,7 @@ const frame=v=>({left:(v%11)*96,top:Math.floor(v/11)*96,width:96,height:96});
 async function render(c,i){const r=c.rect;
   switch(c.kind){
     case 'solid':return `<rect x="${r.x}" y="${r.y}" width="${r.width}" height="${r.height}" fill="${rgb(c.color)}" opacity="${c.color.a}"/>`;
-    case 'text':{const center=c.style.align==='center';return `<clipPath id="t${i}"><rect x="${r.x}" y="${r.y}" width="${r.width}" height="${r.height}"/></clipPath><text clip-path="url(#t${i})" x="${r.x+(center?r.width/2:0)}" y="${r.y+r.height/2+c.style.size*.34}" font-family="${c.style.font}" font-size="${c.style.size}" font-weight="${c.style.size===13?'bold':'normal'}" text-anchor="${center?'middle':'start'}" fill="#edf5ff">${esc(c.text)}</text>`;}
+    case 'text':{const center=c.style.align==='center',colored=/^<color=(#[0-9A-Fa-f]{6})>(.*)<\/color>$/.exec(c.text);return `<clipPath id="t${i}"><rect x="${r.x}" y="${r.y}" width="${r.width}" height="${r.height}"/></clipPath><text clip-path="url(#t${i})" x="${r.x+(center?r.width/2:0)}" y="${r.y+r.height/2+c.style.size*.34}" font-family="${c.style.font}" font-size="${c.style.size}" font-weight="${c.style.size===13?'bold':'normal'}" text-anchor="${center?'middle':'start'}" fill="${colored?colored[1]:'#edf5ff'}">${esc(colored?colored[2]:c.text)}</text>`;}
     case 'icon':return img(await texture('icons',{left:c.index*64,top:0,width:64,height:64},c.color),r);
     case 'thermal':return img(await texture('thermal'),r);
     case 'ring':case 'dial':return img(await texture(c.kind==='dial'?'dial':'rings',c.kind==='dial'?null:frame(100),c.kind==='dial'?null:{r:.16,g:.2,b:.25,a:1}),r)+img(await texture('rings',frame(Math.round(c.value*100)),c.color),r);
@@ -40,16 +41,16 @@ async function render(c,i){const r=c.rect;
   for(let k=0;k<5;k++){
     const [x,y]=positions[k];svg+=`<text x="${x+5}" y="${y+20}" font-family="Arial" font-size="18" fill="#d4dee8">0${k+1} / ${names[k]}</text>`;
     svg+=`<g transform="translate(${x-28},${y+38-(240-heights[k])*1.4}) scale(1.4)">`;
-    const commands=JSON.parse(fs.readFileSync(path.join(dir,`style-${k}-${lang}.json`),'utf8'));
+    const commands=JSON.parse(fs.readFileSync(path.join(dir,`style-${k}-${lang}${suffix}.json`),'utf8'));
     for(let i=0;i<commands.length;i++)svg+=await render(commands[i],`${k}-${i}`);svg+='</g>';
   }
-  svg+='</svg>';await sharp(Buffer.from(svg)).png().toFile(path.join(dir,`overview-${lang}.png`));
-  const legacyPath=path.join(dir,`style-5-${lang}.json`);
+  svg+='</svg>';await sharp(Buffer.from(svg)).png().toFile(path.join(dir,`overview-${lang}${suffix}.png`));
+  const legacyPath=path.join(dir,`style-5-${lang}${suffix}.json`);
   if(fs.existsSync(legacyPath)){
     let legacy='<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720"><rect width="1280" height="720" fill="#233440"/><text x="28" y="44" font-family="Arial" font-size="22" fill="white">Classic / original HUD · offline preview · 1×</text>';
     const commands=JSON.parse(fs.readFileSync(legacyPath,'utf8'));
     for(let i=0;i<commands.length;i++)legacy+=await render(commands[i],`legacy-${i}`);
-    await sharp(Buffer.from(legacy+'</svg>')).png().toFile(path.join(dir,`classic-${lang}.png`));
+    await sharp(Buffer.from(legacy+'</svg>')).png().toFile(path.join(dir,`classic-${lang}${suffix}.png`));
   }
  }
  console.log('Rendered both HUD layout overview images.');

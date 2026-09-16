@@ -9,8 +9,8 @@ $projectRoot = Split-Path -Parent $PSScriptRoot
 $output = Join-Path $projectRoot 'artifacts\build\DVSurvival'
 $manifestSource = Join-Path $projectRoot 'DVSurvival.Game\info.source.json'
 $manifest = Get-Content -LiteralPath $manifestSource -Raw | ConvertFrom-Json
-$releaseVersion = '0.9.22'
-$protocolVersion = 18
+$releaseVersion = '0.1.1'
+$protocolVersion = 21
 
 if ($manifest.Id -ne 'DVSurvival') { throw 'Unexpected mod id in info.source.json.' }
 if ($manifest.Version -ne $releaseVersion) { throw 'Manifest version does not match this release.' }
@@ -42,7 +42,7 @@ $sourceRequired = @(
     'DVSurvival.Game\PlayerImpactMonitor.cs',
     'DVSurvival.Game\SurvivalHud.cs',
     'DVSurvival.Multiplayer\MultiplayerSurvivalBridge.cs',
-    'Docs\RELEASE_0.9.22_RU.md',
+    'Docs\RELEASE_0.1.1_RU.md',
     'dependencies.lock.json',
     'README.md'
 )
@@ -151,7 +151,7 @@ if ($runtimeSource -notmatch 'public void OnWorldTimeAdvanceCompleted' -or
     $runtimeSource -notmatch 'public bool OnLocalSleepStarting' -or
     $runtimeSource -notmatch '!HasConfirmedLocalState \|\| lastHostMessage == null' -or
     $runtimeSource -notmatch 'var sent = RequestAction' -or
-    $runtimeSource -notmatch 'return network\.SendAction\(request\)' -or
+    $runtimeSource -notmatch '(?s)var sent = network\.SendAction\(request\);.*?return sent;' -or
     $contractsSource -notmatch 'bool SendAction\(SurvivalActionRequest request\)' -or
     $runtimeSource -notmatch 'new SleepCalendarJump\(sequence, beforeTicks, afterTicks,' -or
     $runtimeSource -notmatch 'Time\.realtimeSinceStartup, allowsDurationAlignment\)' -or
@@ -238,10 +238,17 @@ if ($runtimeSource -notmatch 'MarkerType\.House' -or
 if ($runtimeSource -notmatch 'GetComponentInChildren<CustomFirstPersonController>') {
     throw 'The impact monitor must remain attached to the actual player physics controller.'
 }
-if ($environmentSource -notmatch 'StationOfficePlayerDetector' -or
+$officeSource = Get-Content -LiteralPath (Join-Path $projectRoot 'DVSurvival.Game\StationOfficeVolumes.cs') -Raw
+if ($environmentSource -notmatch 'stationOffices\.Contains\(BuildingProbePosition' -or
     $environmentSource -notmatch 'PlayerManager\.PlayerCamera\.transform\.position' -or
-    $environmentSource -notmatch 'ClosestPoint\(position\)') {
-    throw 'Station office detection must mirror the vanilla camera containment check.'
+    $environmentSource -notmatch 'Mathf\.Max\(ambient, HeatedBuildingTemperature\)' -or
+    $officeSource -notmatch 'FindObjectsOfType<PostProcessingVolumeAOController>' -or
+    $officeSource -notmatch 'IsOfficeInterior\(controller\.transform\.parent\)' -or
+    $officeSource -notmatch 'TutorialPlayerDetectorType\.StationOffice' -or
+    $officeSource -notmatch 'InverseTransformPoint\(position\) - room\.center' -or
+    $officeSource -notmatch 'room\.size \* \.5f' -or
+    $officeSource -notmatch 'nextScan = Time\.realtimeSinceStartup \+ 3f') {
+    throw 'Station offices must use cached authored room volumes, camera containment and a heating-only thermostat.'
 }
 if ((Get-Content -LiteralPath (Join-Path $projectRoot 'DVSurvival.Game\SurvivalModSettings.cs') -Raw) -notmatch
     'TemperatureChangeMultiplier') {

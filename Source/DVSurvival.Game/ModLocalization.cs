@@ -80,14 +80,38 @@ namespace DVSurvival.Mod
 
         public static string Description(ProvisionKind kind)
         {
-            return Text(
-                "Отсканируйте ценник и оплатите товар на кассе. Заберите покупку, возьмите предмет в руки и используйте. Один предмет — одно применение.",
-                "Scan the shelf tag and pay at the cash register. Collect your purchase, equip it and use it. One item per use.");
+            switch (kind)
+            {
+                case ProvisionKind.Meal: return Text(
+                    "До +45% сытости. Ешьте, удерживая ЛКМ (5 с на порцию). Отпустите — остаток сохранится.",
+                    "Up to +45% food. Hold LMB to eat (5 s per portion). Release to keep the remainder.");
+                case ProvisionKind.Water: return Text(
+                    "До +50% воды; охлаждает на 0,2 °C, не ниже 36 °C. Пейте, удерживая ЛКМ (3 с на бутылку). Остаток сохраняется.",
+                    "Up to +50% hydration; cools by 0.2 °C, no lower than 36 °C. Hold LMB to drink (3 s per bottle). Remainder is kept.");
+                case ProvisionKind.Coffee: return Text(
+                    "До +16% сна, +15% воды; +0,2 °C, не выше 37 °C. Удерживайте ЛКМ (3 с); остаток сохраняется. С первого глотка новой чашки: −10% эффективности до сна.",
+                    "Up to +16% rest, +15% hydration; +0.2 °C, capped at 37 °C. Hold LMB (3 s); remainder is kept. Each new cup's first sip: −10% effectiveness until sleep.");
+                case ProvisionKind.FirstAid: return Text(
+                    "До +40% здоровья за 20 с. ЛКМ: подготовка 8 с, затем расход целиком. ПКМ/убрать — отмена подготовки. Лечение не складывается.",
+                    "Up to +40% health over 20 s. LMB: 8 s preparation, then uses the whole kit. RMB/put away cancels preparation. Healing does not stack.");
+                case ProvisionKind.HeatPack: return Text(
+                    "Температура тела 37 °C и временная защита от холода. ЛКМ: применение 3 с, расход целиком. ПКМ/убрать — отмена.",
+                    "Sets body to 37 °C; temporary cold protection. LMB: apply for 3 s, uses the whole pack. RMB/put away cancels.");
+                default: return string.Empty;
+            }
         }
 
         public static string DescriptionKey(ProvisionKind kind)
         {
-            return Key("Scan the shelf tag and pay at the cash register. Collect your purchase, equip it and use it. One item per use.");
+            switch (kind)
+            {
+                case ProvisionKind.Meal: return Key("Up to +45% food. Hold LMB to eat (5 s per portion). Release to keep the remainder.");
+                case ProvisionKind.Water: return Key("Up to +50% hydration; cools by 0.2 °C, no lower than 36 °C. Hold LMB to drink (3 s per bottle). Remainder is kept.");
+                case ProvisionKind.Coffee: return Key("Up to +16% rest, +15% hydration; +0.2 °C, capped at 37 °C. Hold LMB (3 s); remainder is kept. Each new cup's first sip: −10% effectiveness until sleep.");
+                case ProvisionKind.FirstAid: return Key("Up to +40% health over 20 s. LMB: 8 s preparation, then uses the whole kit. RMB/put away cancels preparation. Healing does not stack.");
+                case ProvisionKind.HeatPack: return Key("Sets body to 37 °C; temporary cold protection. LMB: apply for 3 s, uses the whole pack. RMB/put away cancels.");
+                default: return ProvisionKey(kind);
+            }
         }
 
         public static string Number(float value, string format)

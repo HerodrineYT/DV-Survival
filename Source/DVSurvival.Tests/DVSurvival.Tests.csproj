@@ -18,5 +18,6 @@
     <Compile Include="..\DVSurvival.Game\ProvisionGeometry.cs" Link="Visuals\ProvisionGeometry.cs" />
     <Compile Include="..\DVSurvival.Game\SurvivalSaveData.cs" Link="Persistence\SurvivalSaveData.cs" />
     <Compile Include="..\DVSurvival.Game\SurvivalHud.Layouts.cs" Link="Visuals\SurvivalHud.Layouts.cs" />
+    <Compile Include="..\DVSurvival.Game\SurvivalHud.Overlays.cs" Link="Visuals\SurvivalHud.Overlays.cs" />
   </ItemGroup>
 </Project>

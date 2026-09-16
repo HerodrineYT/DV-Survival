@@ -33,7 +33,7 @@ namespace DVSurvival.Tests
         {
             var s = new SurvivalState { Rest = 20, LowRestGameHours = 30, CoffeeUsesSinceSleep = 10 };
             Assert.Equal(SurvivalResultCode.Success, SurvivalSimulator.Sleep(s, .1f, new SurvivalEnvironment(), new SurvivalTuning()));
-            Assert.Equal(0, s.CoffeeUsesSinceSleep); Assert.True(s.LowRestGameHours > 30);
+            Assert.Equal(0, s.CoffeeUsesSinceSleep); Assert.Equal(30, s.LowRestGameHours);
             var before = s.Rest;
             SurvivalSimulator.ConsumePhysical(s, ProvisionKind.Coffee, new SurvivalTuning());
             Assert.Equal(before + 16, s.Rest, 4);

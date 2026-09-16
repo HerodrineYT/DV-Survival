@@ -24,8 +24,7 @@ namespace DVSurvival.Mod
             var width = HudLayout.Width(style);
             const float x = 20;
             var y = Screen.height / scale - HudLayout.Height(style) - 20;
-            if (style == 4) DrawPlate(new Rect(x, y, width, HudLayout.Height(style)));
-            else FlatPanel(new Rect(x, y, width, HudLayout.Height(style)));
+            DrawStyledPanel(new Rect(x, y, width, HudLayout.Height(style)));
             switch (style)
             {
                 case 1: DrawHorizontalBars(x, y); break;
@@ -34,15 +33,17 @@ namespace DVSurvival.Mod
                 case 4: DrawCompactBrass(x, y); break;
                 default: DrawModernRings(x, y); break;
             }
-            // Only abnormal conditions occupy extra space, in a small non-interactive notice.
-            if (!string.IsNullOrEmpty(warningText))
-            {
-                var rect = new Rect(x, y - 44, Mathf.Min(width, 292), 38);
-                if (style == 4) DrawPlate(rect); else FlatPanel(rect);
-                artwork.DrawIcon(new Rect(x + 8, y - 36, 21, 21), 5, Brass);
-                GUI.Label(new Rect(x + 35, y - 42, rect.width - 43, 17), warningTitle, modernSmall);
-                GUI.Label(new Rect(x + 35, y - 25, rect.width - 43, 16), warningText, modernSmall);
-            }
+        }
+
+        private bool UsesBrassFrame
+        {
+            get { var style = HudLayout.Validate(settings.HudStyle); return style == 4 || style == HudLayout.Legacy; }
+        }
+
+        private void DrawStyledPanel(Rect rect)
+        {
+            if (UsesBrassFrame) DrawPlate(rect);
+            else FlatPanel(rect);
         }
 
         private static void FlatPanel(Rect rect)
@@ -147,14 +148,6 @@ namespace DVSurvival.Mod
                 artwork.DrawIcon(new Rect(dx + 24, bottom - 150, 32, 32), i, LegacyColors[i]);
                 GUI.Label(new Rect(dx + 4, bottom - 92, 72, 18), needValues[i], labelStyle);
                 GUI.Label(new Rect(dx + 2, bottom - 78, 76, 19), needNames[i], labelStyle);
-            }
-            if (!string.IsNullOrEmpty(warningText))
-            {
-                var extra = warningText.Length > 36 ? 18 : 0;
-                DrawPlate(new Rect(x, bottom - 236 - extra, 338, 50 + extra));
-                artwork.DrawIcon(new Rect(x + 12, bottom - 227 - extra, 30, 30), 5, Brass);
-                GUI.Label(new Rect(x + 54, bottom - 233 - extra, 270, 23), warningTitle, legacyTitleStyle);
-                GUI.Label(new Rect(x + 54, bottom - 212 - extra, 270, 20 + extra), warningText, legacyWarningStyle);
             }
             DrawPlate(new Rect(x, bottom - 36, 338, 36));
             GUI.Label(new Rect(x + 14, bottom - 31, 310, 25), ambientText, hudTextStyle);

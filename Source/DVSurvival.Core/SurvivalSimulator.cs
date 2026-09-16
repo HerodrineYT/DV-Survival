@@ -111,8 +111,8 @@ namespace DVSurvival.Core
                         state.BodyTemperatureCelsius = Math.Min(37f, state.BodyTemperatureCelsius + 0.2f);
                     break;
                 case ProvisionKind.FirstAid:
-                    if (state.Health >= 99f) return SurvivalResultCode.NotNeeded;
-                    state.Health = Math.Min(100f, state.Health + 40f);
+                    if (state.Health >= 99f || state.FirstAidSecondsRemaining > 0f) return SurvivalResultCode.NotNeeded;
+                    state.FirstAidSecondsRemaining = FirstAidRecovery.DurationSeconds;
                     break;
                 case ProvisionKind.HeatPack:
                     if (state.WarmthHours > tuning.HeatPackDurationHours * 0.75f && Math.Abs(state.BodyTemperatureCelsius - 37f) < 0.01f)
@@ -160,6 +160,8 @@ namespace DVSurvival.Core
                     var excess = magnitude - height * 1.5f;
                     if (excess <= 0f) return 0f;
                     return Math.Min(95f, 4f + excess * 8.5f + excess * excess * 0.45f);
+                case TraumaKind.TrainDismount:
+                    return Math.Max(0f, magnitude - 5f);
                 case TraumaKind.TrainCollision:
                     var speedExcess = magnitude - 7f;
                     if (speedExcess <= 0f) return 0f;
@@ -184,9 +186,13 @@ namespace DVSurvival.Core
             var remaining = hours;
             while (remaining > 0)
             {
-                var step = SleepDeprivationEffects.NextStep(state, remaining);
+                // Integrate bed rest in bounded game-time steps: waking hungry/cold must
+                // not retroactively cancel healing earned earlier in a long sleep.
+                var step = Math.Min(remaining, 0.25f);
+                if (SleepDeprivationEffects.HasExhaustion(state))
+                    step = Math.Min(step, state.ExhaustionHoursRemaining);
                 SleepStep(state, step, environment, tuning);
-                SleepDeprivationEffects.AdvanceClock(state, step, environment);
+                SleepDeprivationEffects.AdvanceSleepClock(state, step, environment);
                 wakeThirst |= SleepDeprivationEffects.SleepTriggersThirst(state);
                 remaining = Math.Max(0, remaining - step);
             }
@@ -213,9 +219,11 @@ namespace DVSurvival.Core
             var alpha = 1f - (float)Math.Exp(-hours / Math.Max(0.25f, tuning.ThermalTimeConstantHours));
             state.BodyTemperatureCelsius += (sleepTarget - state.BodyTemperatureCelsius) * alpha;
             ApplyHealthChange(state, Math.Min(hours, 12f), tuning, state.BodyTemperatureCelsius,
-                environment.AmbientTemperatureCelsius);
-            if (state.Hunger > 45f && state.Hydration > 45f &&
-                state.BodyTemperatureCelsius >= 35.8f && state.BodyTemperatureCelsius <= 38.2f)
+                environment.AmbientTemperatureCelsius, false);
+            if (state.Hunger >= 15f && state.Hydration >= 20f && environment.AmbientTemperatureCelsius <= 55f &&
+                // Match the actual thermal damage thresholds. Sleep can settle at
+                // 35.5 C, which used to silently disable all sleep healing.
+                state.BodyTemperatureCelsius >= 35f && state.BodyTemperatureCelsius <= 38.5f)
                 state.Health += hours * 1.5f;
             state.SimulatedGameHours += hours;
             state.Revision++;
@@ -275,7 +283,7 @@ namespace DVSurvival.Core
         { ApplyHealthChange(state, hours, tuning, state.BodyTemperatureCelsius, 18f); }
 
         private static void ApplyHealthChange(SurvivalState state, float hours, SurvivalTuning tuning,
-            float bodyTemperatureCelsius, float airTemperatureCelsius)
+            float bodyTemperatureCelsius, float airTemperatureCelsius, bool passiveRecovery = true)
         {
             var damagePerHour = 0f;
             damagePerHour += Deficit(state.Hunger, 15f) * 4f;
@@ -298,7 +306,7 @@ namespace DVSurvival.Core
             {
                 state.Health -= damagePerHour * hours * tuning.DamageMultiplier;
             }
-            else if (state.Hunger > 65f && state.Hydration > 65f && state.Rest > 55f &&
+            else if (passiveRecovery && state.Hunger > 65f && state.Hydration > 65f && state.Rest > 55f &&
                 bodyTemperatureCelsius >= 36f && bodyTemperatureCelsius <= 38f)
             {
                 state.Health += tuning.PassiveHealthRecoveryPerHour * hours;
@@ -309,6 +317,7 @@ namespace DVSurvival.Core
         {
             if (state.Health > 0f) return;
             state.CollapseCount++;
+            state.FirstAidSecondsRemaining = 0f;
             state.Health = 10f;
             state.Hunger = Math.Max(10f, state.Hunger);
             state.Hydration = Math.Max(10f, state.Hydration);

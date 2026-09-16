@@ -10,11 +10,12 @@ namespace DVSurvival.Core
         public float Hydration = 100f;
         public float Rest = 100f;
         public float Health = 100f;
+        public float FirstAidSecondsRemaining;
         public float BodyTemperatureCelsius = 37f;
         public float CaffeineHours;
         public int CoffeeUsesSinceSleep;
         public float WarmthHours;
-        // Elapsed game-calendar hours since the last full native sleep. The historical field name
+        // Awake game-calendar hours since the last full native sleep (bed rest pauses the clock). The historical field name
         // is retained so existing saves and multiplayer state packets remain migratable.
         public double LowRestGameHours;
         public float ExhaustionHoursRemaining;
@@ -51,6 +52,7 @@ namespace DVSurvival.Core
                 Hydration = Hydration,
                 Rest = Rest,
                 Health = Health,
+                FirstAidSecondsRemaining = FirstAidSecondsRemaining,
                 BodyTemperatureCelsius = BodyTemperatureCelsius,
                 CaffeineHours = CaffeineHours,
                 CoffeeUsesSinceSleep = CoffeeUsesSinceSleep,
@@ -105,6 +107,7 @@ namespace DVSurvival.Core
                 IsFiniteInRange(Hydration, 0f, 100f) &&
                 IsFiniteInRange(Rest, 0f, 100f) &&
                 IsFiniteInRange(Health, 0f, 100f) &&
+                IsFiniteInRange(FirstAidSecondsRemaining, 0f, FirstAidRecovery.DurationSeconds) &&
                 IsFiniteInRange(BodyTemperatureCelsius, 30f, 43f) &&
                 IsFiniteInRange(CaffeineHours, 0f, 48f) &&
                 CoffeeUsesSinceSleep >= 0 && CoffeeUsesSinceSleep <= 10 &&
@@ -127,6 +130,7 @@ namespace DVSurvival.Core
             Hydration = ClampFinite(Hydration, 0f, 100f, 100f);
             Rest = ClampFinite(Rest, 0f, 100f, 100f);
             Health = ClampFinite(Health, 0f, 100f, 100f);
+            FirstAidSecondsRemaining = ClampFinite(FirstAidSecondsRemaining, 0f, FirstAidRecovery.DurationSeconds, 0f);
             BodyTemperatureCelsius = ClampFinite(BodyTemperatureCelsius, 30f, 43f, 37f);
             CaffeineHours = ClampFinite(CaffeineHours, 0f, 48f, 0f);
             CoffeeUsesSinceSleep = Clamp(CoffeeUsesSinceSleep, 0, 10);

@@ -188,7 +188,10 @@ namespace DVSurvival.Mod
             var inventory = SingletonBehaviour<Inventory>.Instance;
             if (inventory == null || inventory.GetEquipSlotForItem(gameObject) < 0) return;
             nextUse = Time.realtimeSinceStartup + 0.6f;
-            owner.RequestConsume(kind);
+            ProvisionUseAction.Begin(gameObject, kind, () =>
+            {
+                if (owner != null && owner.HasConfirmedLocalState) owner.RequestConsume(kind);
+            });
         }
 
         private void OnDestroy() { if (item != null) item.Used -= OnUsed; }

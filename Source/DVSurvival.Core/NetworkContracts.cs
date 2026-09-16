@@ -77,6 +77,8 @@ namespace DVSurvival.Core
         public int HeatPackPrice;
         public string CabHeaterCarId = string.Empty;
         public float CabHeaterLevel;
+        public string ItemIdentity = string.Empty;
+        public int ItemUsedUnits = -1;
 
         public int GetPrice(ProvisionKind kind)
         {

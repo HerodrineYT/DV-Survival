@@ -8,6 +8,32 @@ namespace DVSurvival.Tests
     public sealed class ProtocolTests
     {
         [Fact]
+        public void PartialItemReceiptPreservesAuthoritativeRemainder()
+        {
+            var copy = RoundTrip(new SurvivalStatePacket
+            {
+                Message = new SurvivalStateMessage
+                { ItemIdentity = "d7d663e9-5a3b-420a-b75f-4a64b7c9f3d3", ItemUsedUnits = 375 }
+            }, new SurvivalStatePacket());
+            Assert.Equal(375, copy.Message.ItemUsedUnits);
+            Assert.Equal("d7d663e9-5a3b-420a-b75f-4a64b7c9f3d3", copy.Message.ItemIdentity);
+        }
+        [Fact]
+        public void TrainDismountActionRoundTrips()
+        {
+            var copy = RoundTrip(new SurvivalActionPacket
+            {
+                Request = new SurvivalActionRequest
+                {
+                    Action = SurvivalActionKind.Trauma, Trauma = TraumaKind.TrainDismount,
+                    Amount = 20f, SecondaryAmount = 1.8f, SessionId = "current-host-epoch"
+                }
+            }, new SurvivalActionPacket());
+            Assert.Equal(21, copy.Request.Protocol);
+            Assert.Equal(TraumaKind.TrainDismount, copy.Request.Trauma);
+            Assert.Equal(20f, copy.Request.Amount);
+        }
+        [Fact]
         public void PersonalSleepWithoutCalendarJumpRoundTrips()
         {
             var copy = RoundTrip(new SurvivalActionPacket
@@ -18,7 +44,7 @@ namespace DVSurvival.Tests
                     Amount = 10f, SessionId = "current-host-epoch", RequestId = 19u
                 }
             }, new SurvivalActionPacket());
-            Assert.Equal(18, copy.Request.Protocol);
+            Assert.Equal(21, copy.Request.Protocol);
             Assert.Equal(SurvivalActionKind.SleepWithoutTimeAdvance, copy.Request.Action);
             Assert.Equal(10f, copy.Request.Amount);
             Assert.Equal(0L, copy.Request.CalendarBeforeTicks);
@@ -113,7 +139,7 @@ namespace DVSurvival.Tests
             Assert.Equal(99u, copy.Message.State.Revision);
             Assert.Equal(126.75d, copy.Message.State.LowRestGameHours);
             Assert.Equal(2.25f, copy.Message.State.ExhaustionHoursRemaining);
-            Assert.Equal(18, copy.Message.Protocol);
+            Assert.Equal(21, copy.Message.Protocol);
             Assert.Equal(6, copy.Message.State.CoffeeUsesSinceSleep);
         }
 

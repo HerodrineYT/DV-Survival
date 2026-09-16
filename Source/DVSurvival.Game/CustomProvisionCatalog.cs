@@ -66,7 +66,7 @@ namespace DVSurvival.Mod
                 var info = new CustomItemInfo
                 {
                     Name = Prefix + kind,
-                    Description = "Personal survival supplies",
+                    Description = ModLocalization.Description(kind),
                     Price = Main.Runtime == null ? ProvisionShopPricing.LocalPrice(100) : Main.Runtime.GetPrice(kind),
                     Amount = 5,
                     // CIM maps X/Y to ShelfItem width/depth, not to model width/height.
@@ -87,6 +87,9 @@ namespace DVSurvival.Mod
                 spec.rigidbodyMass = 0.3f;
                 spec.excludeFromStorageSerialization = (StorageType)0;
                 custom.ItemPrefab.AddComponent<NativeProvisionToken>().Kind = kind;
+                custom.ItemPrefab.AddComponent<ProvisionItemLocalizer>().Kind = kind;
+                if (custom.ItemSpec.gameObject != custom.ItemPrefab)
+                    custom.ItemSpec.gameObject.AddComponent<ProvisionItemLocalizer>().Kind = kind;
                 custom.ItemPrefab.GetComponent<ShopRestocker>().restockOnItemDestroyed = true;
                 custom.ItemSpec.PreviewBounds = model.GetComponent<MeshFilter>().sharedMesh.bounds;
                 // Native detailed previews must not clone pickup/use/save scripts or physics.

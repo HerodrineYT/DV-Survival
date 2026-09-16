@@ -38,10 +38,10 @@
   },
   "dvSeasons": {
     "integration": "optional-reflection",
-    "testedWorkspaceVersion": "0.3.30",
-    "availableWorkspaceSourceVersion": "0.3.30",
-    "mainAssemblySha256": "6ce6f64d80805ff62bda4b4aae6b59669db840d4289fc961c7e8d68c31353fad",
-    "coreAssemblySha256": "8d9eae412a2c5070b2a9b26e7d1e128a29c809c5326d57fc7657d4e21d2ed2c4",
+    "testedWorkspaceVersion": "0.3.33",
+    "availableWorkspaceSourceVersion": "0.3.33",
+    "mainAssemblySha256": "142bc9acac8647c5ca4d4d3c1e86d7f28d58d0cac7962c4c01126d9c699481c6",
+    "coreAssemblySha256": "424ffa3b4743a77644001ebe2b12f4008fbc79c9d3c880c4559498b9898a7203",
     "hardDependency": false
   }
 }

@@ -20,6 +20,9 @@ namespace DVSurvival.Mod
         private float nextTrainContactProbe;
         private Vector3 previousPosition;
         private int trainColliderMask;
+        private TrainCar previousCar;
+        private float lastCarSpeed, dismountSpeed, dismountedAt;
+        private float suppressUntil;
 
         public void Initialize(SurvivalRuntime survivalRuntime,
             CustomFirstPersonController playerController = null)
@@ -43,12 +46,17 @@ namespace DVSurvival.Mod
             fallPeakY = position.y;
             trackingFall = false;
             wasGrounded = capsule != null && capsule.isGrounded;
+            previousCar = PlayerManager.Car;
+            lastCarSpeed = previousCar == null ? 0f : previousCar.GetAbsSpeed() * 3.6f;
+            dismountSpeed = 0f;
+            suppressUntil = Time.realtimeSinceStartup + 1f;
         }
 
         private void Update()
         {
             if (runtime == null || capsule == null || !runtime.IsSessionReady) return;
-            if (runtime.IsRespawning) { ResetTracking(); return; }
+            if (runtime.IsRespawning || runtime.IsHomeTravelPending || FastTravelController.IsFastTravelling ||
+                LoadingScreenManager.IsLoading) { ResetTracking(); return; }
             var position = transform.position;
             if ((position - previousPosition).sqrMagnitude > 144f ||
                 (firstPerson != null && (firstPerson.IsClimbingLadders || firstPerson.underwater)))
@@ -57,6 +65,32 @@ namespace DVSurvival.Mod
                 return;
             }
             var grounded = capsule.isGrounded;
+            var car = PlayerManager.Car;
+            if (car != null)
+            {
+                previousCar = car;
+                lastCarSpeed = car.GetAbsSpeed() * 3.6f;
+                dismountSpeed = 0f;
+            }
+            else if (previousCar != null)
+            {
+                dismountSpeed = Time.realtimeSinceStartup >= suppressUntil ? lastCarSpeed : 0f;
+                dismountedAt = Time.realtimeSinceStartup;
+                previousCar = null;
+            }
+            bool dismountHit = false;
+            if (dismountSpeed > 5f && grounded && Time.realtimeSinceStartup - dismountedAt > 0.12f)
+            {
+                RaycastHit support;
+                var onTrain = Physics.Raycast(transform.TransformPoint(capsule.center), Vector3.down,
+                    out support, capsule.height * 0.5f + .3f, trainColliderMask, QueryTriggerInteraction.Ignore);
+                if (!onTrain)
+                    runtime.OnLocalTrauma(TraumaKind.TrainDismount, dismountSpeed, GetPlayerHeight());
+                dismountSpeed = 0f;
+                dismountHit = true;
+                nextTrainHit = Time.realtimeSinceStartup + TrainHitCooldownSeconds;
+            }
+            if (Time.realtimeSinceStartup - dismountedAt > 10f) dismountSpeed = 0f;
             if (!grounded)
             {
                 if (wasGrounded || !trackingFall)
@@ -74,7 +108,7 @@ namespace DVSurvival.Mod
             {
                 var fallDistance = fallPeakY - position.y;
                 var playerHeight = GetPlayerHeight();
-                if (Time.realtimeSinceStartup - airborneSince > 0.12f &&
+                if (!dismountHit && Time.realtimeSinceStartup - airborneSince > 0.12f &&
                     fallDistance > playerHeight * 1.5f)
                     runtime.OnLocalTrauma(TraumaKind.Fall, fallDistance, playerHeight);
                 trackingFall = false;
@@ -130,7 +164,8 @@ namespace DVSurvival.Mod
         private bool TryReportTrainCollision(Collider collider)
         {
             if (runtime == null || !runtime.IsSessionReady || runtime.IsRespawning || collider == null ||
-                Time.realtimeSinceStartup < nextTrainHit)
+                Time.realtimeSinceStartup < nextTrainHit || dismountSpeed > 5f || previousCar != null ||
+                Time.realtimeSinceStartup < suppressUntil)
                 return false;
             var car = collider.GetComponentInParent<TrainCar>();
             if (car == null || car == PlayerManager.Car) return false;

@@ -24,7 +24,9 @@ namespace DVSurvival.Mod
         private readonly SurvivalModSettings settings;
         private readonly CabHeaterSwitchSystem cabHeaters;
         private readonly DvSeasonsTemperatureProvider seasons = new DvSeasonsTemperatureProvider();
+        private readonly StationOfficeVolumes stationOffices = new StationOfficeVolumes();
         private readonly Dictionary<byte, Vector3> previousRemotePositions = new Dictionary<byte, Vector3>();
+        private readonly Dictionary<byte, TrainCar> riddenCars = new Dictionary<byte, TrainCar>();
         private Shop[] shops = new Shop[0];
         private BedSleeping[] beds = new BedSleeping[0];
         private FireboxSimController[] fireboxes = new FireboxSimController[0];
@@ -147,20 +149,41 @@ namespace DVSurvival.Mod
         }
 
         public bool IsPlayerNearMovingTrain(SurvivalPlayerInfo player, float minimumSpeedKmh)
+        { return NearbyTrainSpeed(player) > minimumSpeedKmh; }
+
+        public float NearbyTrainSpeed(SurvivalPlayerInfo player)
         {
-            if (player == null) return false;
+            if (player == null) return 0f;
             var position = new Vector3(player.PositionX, player.PositionY, player.PositionZ);
             var count = Physics.OverlapSphereNonAlloc(position, 3.25f, trainProbe,
                 TrainColliderLayerMask(), QueryTriggerInteraction.Collide);
+            var speed = 0f;
             for (var index = 0; index < count; index++)
             {
                 var collider = trainProbe[index];
                 trainProbe[index] = null;
                 if (collider == null) continue;
                 var car = collider.GetComponentInParent<TrainCar>();
-                if (car != null && car.GetAbsSpeed() * 3.6f > minimumSpeedKmh) return true;
+                if (car != null && (!player.IsOnCar || car.CarGUID == player.OccupiedCarId))
+                    speed = Mathf.Max(speed, car.GetAbsSpeed() * 3.6f);
             }
-            return false;
+            return speed;
+        }
+
+        public float OccupiedTrainSpeed(SurvivalPlayerInfo player)
+        {
+            if (player == null || !player.IsOnCar || string.IsNullOrEmpty(player.OccupiedCarId)) return 0f;
+            TrainCar car;
+            if (!riddenCars.TryGetValue(player.PlayerId, out car) || car == null || car.CarGUID != player.OccupiedCarId)
+            {
+                car = null;
+                var spawner = CarSpawner.Instance;
+                if (spawner != null && spawner.AllCars != null)
+                    foreach (var candidate in spawner.AllCars)
+                        if (candidate != null && candidate.CarGUID == player.OccupiedCarId) { car = candidate; break; }
+                riddenCars[player.PlayerId] = car;
+            }
+            return car == null ? 0f : car.GetAbsSpeed() * 3.6f;
         }
 
         public double PlayerMoney
@@ -199,11 +222,13 @@ namespace DVSurvival.Mod
 
         public void ForgetPlayer(byte playerId)
         {
+            riddenCars.Remove(playerId);
             previousRemotePositions.Remove(playerId);
         }
 
         public void Reset()
         {
+            riddenCars.Clear();
             shops = new Shop[0];
             beds = new BedSleeping[0];
             fireboxes = new FireboxSimController[0];
@@ -302,7 +327,18 @@ namespace DVSurvival.Mod
                 ApplyLocomotiveClimate(PlayerManager.Car, position, ambient, ref ambient, ref rain,
                     ref wind, ref exposure, ref shelterWarmth, ref thermalRecovery);
             }
-            else if (!inCar && IsInsideHeatedBuilding(BuildingProbePosition(position, isLocalPlayer), roof))
+            else if (!inCar && stationOffices.Contains(BuildingProbePosition(position, isLocalPlayer)))
+            {
+                // A thermostat heats a cold office to 22 C; it does not provide
+                // air conditioning when the outside air is already warmer.
+                ambient = Mathf.Max(ambient, HeatedBuildingTemperature);
+                rain = 0f;
+                wind = 0f;
+                exposure = 0.03f;
+                shelterWarmth = 0f;
+                thermalRecovery = 2.5f;
+            }
+            else if (!inCar && IsInsideHeatedShop(BuildingProbePosition(position, isLocalPlayer), roof))
             {
                 ambient = HeatedBuildingTemperature;
                 rain = 0f;
@@ -587,19 +623,17 @@ namespace DVSurvival.Mod
             ambient = Mathf.Clamp(best, SurvivalEnvironment.MinimumAirTemperature, SurvivalEnvironment.MaximumAirTemperature);
         }
 
-        private bool IsInsideHeatedBuilding(Vector3 position, bool hasRoof)
+        private bool IsInsideHeatedShop(Vector3 position, bool hasRoof)
         {
-            // Vanilla's TutorialPlayerDetector checks the camera against the office volume with
-            // Collider.ClosestPoint. Use the same point and containment rule. Runtime clones do
-            // not reliably preserve the prefab's Ignore Raycast layer, so query all layers in a
-            // tiny, non-allocating sphere instead of scanning the world or relying on a layer.
+            // Shop interiors use their existing collision/proximity detection.
+            // Station offices are handled by their exact native room volumes.
             var count = Physics.OverlapSphereNonAlloc(position, 0.2f, buildingProbe,
                 ~0, QueryTriggerInteraction.Collide);
             for (var index = 0; index < count; index++)
             {
                 var collider = buildingProbe[index];
                 buildingProbe[index] = null;
-                if (collider != null && IsHeatedBuildingName(collider.transform) &&
+                if (collider != null && IsHeatedShopName(collider.transform) &&
                     (collider.ClosestPoint(position) - position).sqrMagnitude < 0.0001f)
                     return true;
             }
@@ -623,13 +657,12 @@ namespace DVSurvival.Mod
             return layer >= 0 ? 1 << layer : 1 << 10;
         }
 
-        private static bool IsHeatedBuildingName(Transform transform)
+        private static bool IsHeatedShopName(Transform transform)
         {
             for (var depth = 0; transform != null && depth < 7; depth++, transform = transform.parent)
             {
                 var normalized = NormalizeName(transform.name);
-                if (normalized.Contains("stationoffice") || normalized.Contains("itemshopinterior") ||
-                    normalized.Contains("shopinterior") || normalized.Contains("stationofficeplayerdetector"))
+                if (normalized.Contains("itemshopinterior") || normalized.Contains("shopinterior"))
                     return true;
             }
             return false;

@@ -28,6 +28,8 @@ namespace DVSurvival.Mod
         private readonly UnityModManager.ModEntry entry;
         private readonly SurvivalModSettings settings;
         private readonly CabHeaterSwitchSystem cabHeaters;
+        private readonly TrainDismountEvidence dismountEvidence = new TrainDismountEvidence();
+        private float nextDismountObservation;
         private readonly EnvironmentSampler environment;
         private readonly ISurvivalNetworkBridge network;
         private readonly Dictionary<byte, SurvivalPlayerRecord> activeRecords =
@@ -53,6 +55,7 @@ namespace DVSurvival.Mod
         private SaveGameData sessionSaveData;
         private SurvivalSaveDocument document;
         private SurvivalState currentState;
+        private readonly SleepHudPreview sleepHudPreview = new SleepHudPreview();
         private SurvivalEnvironment lastLocalEnvironment = new SurvivalEnvironment();
         private SurvivalHud hud;
         private PersonalProvisionItems personalItems;
@@ -66,6 +69,7 @@ namespace DVSurvival.Mod
         private bool lastAuthority;
         private byte lastLocalAuthorityId = byte.MaxValue;
         private float simulationAccumulator;
+        private float firstAidAccumulator;
         private float nextStateBroadcast;
         private float nextHello;
         private float nextSaveCheckpoint;
@@ -117,6 +121,7 @@ namespace DVSurvival.Mod
         }
 
         public SurvivalState CurrentState { get { return currentState; } }
+        public SurvivalState HudState => sleepHudPreview.Get(currentState, Time.realtimeSinceStartup);
         public SurvivalEnvironment CurrentEnvironment { get { return lastLocalEnvironment; } }
         public string CabinStatus { get { return environment.CabinStatus; } }
         public bool IsSessionReady { get { return sessionReady; } }
@@ -244,6 +249,31 @@ namespace DVSurvival.Mod
             EnsureLocalAuthorityRecord();
             ProcessPendingHellos();
             if (deltaTime <= 0f || IsGamePaused()) return;
+            // Actual play time only: sleep/fast-travel calendar jumps never accelerate treatment.
+            firstAidAccumulator += Math.Max(0f, deltaTime);
+            if (firstAidAccumulator >= .5f)
+            {
+                var healingSeconds = firstAidAccumulator;
+                firstAidAccumulator = 0f;
+                foreach (var pair in activeRecords)
+                {
+                    if (!FirstAidRecovery.Advance(pair.Value.State, healingSeconds)) continue;
+                    SendResult(pair.Key, pair.Value.State, 0, SurvivalResultCode.None, string.Empty, false);
+                    stateDirty = true;
+                }
+            }
+            if (Time.realtimeSinceStartup >= nextDismountObservation)
+            {
+                nextDismountObservation = Time.realtimeSinceStartup + 0.25f;
+                var riders = network.GetPlayers();
+                foreach (var rider in riders)
+                    if (rider.IsOnCar) dismountEvidence.Observe(rider.PlayerId,
+                        environment.OccupiedTrainSpeed(rider), Time.realtimeSinceStartup);
+                var localRider = GetLocalPlayerInfo(network.LocalPlayerId);
+                if (localRider != null && localRider.IsOnCar)
+                    dismountEvidence.Observe(localRider.PlayerId, environment.OccupiedTrainSpeed(localRider),
+                        Time.realtimeSinceStartup);
+            }
             simulationAccumulator += Math.Min(deltaTime, 5f);
             if (simulationAccumulator >= SimulationIntervalSeconds)
             {
@@ -313,7 +343,7 @@ namespace DVSurvival.Mod
                 RejectPendingCabHeater();
         }
 
-        public void RequestPhysicalConsume(NativeProvisionToken token)
+        public void RequestPhysicalConsume(NativeProvisionToken token, int targetUnits = -1)
         {
             if (token == null || !HasConfirmedLocalState) return;
             foreach (var pending in pendingItemUses.Where(p => p.Value == null || p.Value == token).Select(p => p.Key).ToArray())
@@ -322,8 +352,8 @@ namespace DVSurvival.Mod
             var id = ++requestSequence;
             pendingItemUses.Add(id, token);
             RequestAction(new SurvivalActionRequest {
-                RequestId = id, Action = SurvivalActionKind.ConsumePhysical, Provision = token.Kind,
-                ItemIdentity = token.Identity
+                RequestId = id, Action = targetUnits >= 0 ? SurvivalActionKind.ConsumePortion : SurvivalActionKind.ConsumePhysical,
+                Provision = token.Kind, Amount = targetUnits, ItemIdentity = token.Identity
             });
         }
 
@@ -698,9 +728,19 @@ namespace DVSurvival.Mod
             request.SessionId = network.IsSessionActive && !network.IsAuthority
                 ? (lastHostMessage == null ? string.Empty : lastHostMessage.SessionId)
                 : (document == null ? string.Empty : document.SessionId);
+            var sleepPresentation = NativeSleepOriginPatch.IsAdvancingSleep &&
+                (request.Action == SurvivalActionKind.Sleep || request.Action == SurvivalActionKind.SleepWithoutTimeAdvance);
+            if (sleepPresentation)
+            {
+                sleepHudPreview.Begin(request.RequestId, currentState, request.Amount,
+                    lastLocalEnvironment, settings.ToTuning(), Time.realtimeSinceStartup);
+                if (hud != null) hud.RefreshNow();
+            }
             if (network.IsSessionActive && !network.IsAuthority)
             {
-                return network.SendAction(request);
+                var sent = network.SendAction(request);
+                if (!sent && sleepPresentation) sleepHudPreview.Clear();
+                return sent;
             }
             EnsureLocalAuthorityRecord();
             var localId = network.IsSessionActive ? network.LocalPlayerId : byte.MaxValue;
@@ -755,6 +795,7 @@ namespace DVSurvival.Mod
             var tuning = settings.ToTuning();
             var result = SurvivalResultCode.InvalidRequest;
             var status = string.Empty;
+            var itemUsedUnits = -1;
             var previousCollapse = record.State.CollapseCount;
             if (request.Action == SurvivalActionKind.Consume)
             {
@@ -763,10 +804,21 @@ namespace DVSurvival.Mod
             }
             else if (request.Action == SurvivalActionKind.ConsumePhysical)
             {
-                result = PhysicalItemLedger.Consume(document.ConsumedItems, request.ItemIdentity,
+                result = PartialProvisionLedger.Supports(request.Provision)
+                    ? PartialProvisionLedger.Consume(document.PartialItems, document.ConsumedItems, request.ItemIdentity,
+                        1000, record.State, request.Provision, out itemUsedUnits, tuning)
+                    : PhysicalItemLedger.Consume(document.ConsumedItems, request.ItemIdentity,
                     record.State, request.Provision, tuning, playerId == lastLocalAuthorityId
                         ? environment.SampleLocal(0f) : GetRemoteEnvironment(player, 0f, 0f));
                 if (result == SurvivalResultCode.Success) status = ProvisionStatus(request.Provision);
+            }
+            else if (request.Action == SurvivalActionKind.ConsumePortion)
+            {
+                if (!float.IsNaN(request.Amount) && !float.IsInfinity(request.Amount) &&
+                    request.Amount >= 0f && request.Amount <= 1000f && request.Amount == (int)request.Amount)
+                    result = PartialProvisionLedger.Consume(document.PartialItems, document.ConsumedItems,
+                        request.ItemIdentity, (int)request.Amount, record.State, request.Provision, out itemUsedUnits, tuning);
+                // No per-sip notification: the HUD and the held item's percentage are sufficient.
             }
             else if (request.Action == SurvivalActionKind.Sleep ||
                 request.Action == SurvivalActionKind.SleepWithoutTimeAdvance)
@@ -788,12 +840,15 @@ namespace DVSurvival.Mod
                     if (PersonalSleepValidator.IsValid(network.IsSessionActive,
                         IsPersonalSleepMode, nearBed, request))
                     {
+                        var healthBeforeSleep = record.State.Health;
                         result = SurvivalSimulator.Sleep(record.State, request.Amount,
                             playerId == lastLocalAuthorityId ? environment.SampleLocal(0f)
                                 : GetRemoteEnvironment(player, 0f, 0f), tuning);
                         if (result == SurvivalResultCode.Success) status = "sleep_ok";
                         entry.Logger.Log("Personal native sleep without world time advance: player=" +
-                            playerId + ", hours=" + request.Amount + ", rest=" + record.State.Rest);
+                            playerId + ", hours=" + request.Amount + ", rest=" + record.State.Rest +
+                            ", health=" + healthBeforeSleep + "->" + record.State.Health +
+                            ", bodyC=" + record.State.BodyTemperatureCelsius);
                     }
                 }
                 else
@@ -808,6 +863,7 @@ namespace DVSurvival.Mod
             else if (request.Action == SurvivalActionKind.Trauma)
             {
                 float nextTrauma;
+                float dismountMagnitude = 0f;
                 if (nextTraumaTimes.TryGetValue(playerId, out nextTrauma) &&
                     Time.realtimeSinceStartup < nextTrauma)
                     result = SurvivalResultCode.RateLimited;
@@ -819,11 +875,15 @@ namespace DVSurvival.Mod
                     (player == null || player.IsOnCar || request.Amount > 300f || request.Amount <= 7f ||
                      !environment.IsPlayerNearMovingTrain(player, 7f)))
                     result = SurvivalResultCode.InvalidRequest;
+                else if (request.Trauma == TraumaKind.TrainDismount &&
+                    !dismountEvidence.TryTake(playerId, request.Amount, Time.realtimeSinceStartup, out dismountMagnitude))
+                    result = SurvivalResultCode.InvalidRequest;
                 else
                 {
                     nextTraumaTimes[playerId] = Time.realtimeSinceStartup + TraumaCooldownSeconds;
                     result = SurvivalSimulator.ApplyTrauma(record.State, request.Trauma,
-                        request.Amount, request.SecondaryAmount, tuning);
+                        request.Trauma == TraumaKind.TrainDismount ? dismountMagnitude : request.Amount,
+                        request.SecondaryAmount, tuning);
                     if (result == SurvivalResultCode.Success)
                         status = request.Trauma == TraumaKind.Fall ? "fall_damage" : "train_damage";
                 }
@@ -845,7 +905,8 @@ namespace DVSurvival.Mod
             if (ApplyDeathPenalty(record.State, previousCollapse)) status = "death";
             record.LastSeenUtcTicks = DateTime.UtcNow.Ticks;
             if (playerId == lastLocalAuthorityId) SetLocalState(record.State);
-            SendResult(playerId, record.State, request.RequestId, result, status, true, player);
+            SendResult(playerId, record.State, request.RequestId, result, status, true, player,
+                itemUsedUnits >= 0 ? request.ItemIdentity : string.Empty, itemUsedUnits);
             stateDirty = true;
         }
 
@@ -917,7 +978,7 @@ namespace DVSurvival.Mod
 
         private void SendResult(byte playerId, SurvivalState state, uint requestId,
             SurvivalResultCode result, string status, bool reliable = true,
-            SurvivalPlayerInfo player = null)
+            SurvivalPlayerInfo player = null, string itemIdentity = "", int itemUsedUnits = -1)
         {
             var tuning = settings.ToTuning();
             if (player == null)
@@ -945,6 +1006,8 @@ namespace DVSurvival.Mod
                 HeatPackPrice = GetPrice(ProvisionKind.HeatPack),
                 CabHeaterCarId = heaterCarId,
                 CabHeaterLevel = document != null ? document.GetCabHeater(heaterCarId) : 0f,
+                ItemIdentity = itemIdentity,
+                ItemUsedUnits = itemUsedUnits,
             };
             if (playerId == lastLocalAuthorityId)
             {
@@ -979,6 +1042,8 @@ namespace DVSurvival.Mod
                 // A newer periodic snapshot may overtake the reliable receipt; never rewind state.
                 if (lastHostMessage != null && message.SessionId == lastHostMessage.SessionId)
                 {
+                    sleepHudPreview.Resolve(message.RequestId);
+                    if (hud != null) hud.RefreshNow();
                     ConfirmPhysicalItem(message);
                     if (message.RequestId == pendingCabHeaterRequestId)
                         ConfirmStaleCabHeaterReceipt(message);
@@ -1043,11 +1108,12 @@ namespace DVSurvival.Mod
 
         private void ApplyLocalMessage(SurvivalStateMessage message, bool fromNetwork)
         {
+            sleepHudPreview.Resolve(message.RequestId);
             SetLocalState(message.State);
             ApplyCabHeaterMessage(message);
             ConfirmPhysicalItem(message);
-            if (message.RequestId != 0 || message.Result != SurvivalResultCode.None ||
-                !string.IsNullOrEmpty(message.StatusKey))
+            if (string.IsNullOrEmpty(message.ItemIdentity) && (message.RequestId != 0 || message.Result != SurvivalResultCode.None ||
+                !string.IsNullOrEmpty(message.StatusKey)))
             {
                 var text = ModLocalization.Result(message.Result, message.StatusKey);
                 if (!string.IsNullOrEmpty(text)) Notify(text);
@@ -1143,7 +1209,8 @@ namespace DVSurvival.Mod
             NativeProvisionToken token;
             if (message.RequestId == 0 || !pendingItemUses.TryGetValue(message.RequestId, out token)) return;
             pendingItemUses.Remove(message.RequestId);
-            if (token != null) token.Confirm(message.Result);
+            if (token != null) token.Confirm(message.Result,
+                message.ItemIdentity == token.Identity ? message.ItemUsedUnits : -1);
         }
 
         private void SetLocalState(SurvivalState state)
@@ -1165,6 +1232,7 @@ namespace DVSurvival.Mod
             }
             hasLocalStateSnapshot = true;
             lastCollapseCount = currentState.CollapseCount;
+            if (hud != null) hud.RefreshNow();
         }
 
         private bool ApplyDeathPenalty(SurvivalState state, uint previousCollapse)
@@ -1280,6 +1348,7 @@ namespace DVSurvival.Mod
 
         private void OnPlayerDisconnected(byte playerId)
         {
+            dismountEvidence.Remove(playerId);
             actionRequests.Remove(playerId);
             activeRecords.Remove(playerId);
             pendingHellos.Remove(playerId);
@@ -1501,6 +1570,9 @@ namespace DVSurvival.Mod
 
         private void ResetCabHeaterControls()
         {
+            firstAidAccumulator = 0f;
+            sleepHudPreview.Clear();
+            dismountEvidence.Clear();
             cabHeaters.Reset();
             environment.InvalidateCabControls();
         }
@@ -1581,11 +1653,15 @@ namespace DVSurvival.Mod
             SurvivalPlayerRecord record;
             if (!activeRecords.TryGetValue(sleep.PlayerId, out record)) return;
             var previousCollapse = record.State.CollapseCount;
+            var healthBeforeSleep = record.State.Health;
             var result = SurvivalSimulator.Sleep(record.State, pending.Hours,
                 pending.Environment, settings.ToTuning());
             entry.Logger.Log("Native sleep committed: player=" + sleep.PlayerId +
                 ", hours=" + pending.Hours + ", result=" + result +
-                ", rest=" + record.State.Rest + ", deprivationHours=" + record.State.LowRestGameHours);
+                ", rest=" + record.State.Rest + ", deprivationHours=" + record.State.LowRestGameHours +
+                ", health=" + healthBeforeSleep + "->" + record.State.Health +
+                ", bodyC=" + record.State.BodyTemperatureCelsius +
+                ", airC=" + pending.Environment.AmbientTemperatureCelsius);
             var status = result == SurvivalResultCode.Success ? "sleep_ok" : string.Empty;
             if (ApplyDeathPenalty(record.State, previousCollapse)) status = "death";
             record.LastSeenUtcTicks = DateTime.UtcNow.Ticks;
@@ -1730,7 +1806,7 @@ namespace DVSurvival.Mod
             }
         }
 
-        private bool IsGamePaused()
+        internal bool IsGamePaused()
         {
             try
             {

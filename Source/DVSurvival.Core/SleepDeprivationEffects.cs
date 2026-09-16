@@ -47,11 +47,7 @@ namespace DVSurvival.Core
         public static void AdvanceClock(SurvivalState s, float hours, SurvivalEnvironment environment)
         {
             // Spend the old phase first; a phase starting at this step's end gets its full three hours.
-            if (HasExhaustion(s))
-            {
-                ApplyCold(s, environment);
-                s.ExhaustionHoursRemaining = Math.Max(0, s.ExhaustionHoursRemaining - hours);
-            }
+            AdvanceSleepClock(s, hours, environment);
             var previous = s.LowRestGameHours;
             s.LowRestGameHours = Math.Min(MaximumLowRestHours, previous + hours);
             if (previous < ExhaustionThresholdHours && s.LowRestGameHours >= ExhaustionThresholdHours)
@@ -62,6 +58,17 @@ namespace DVSurvival.Core
                 s.Rest = Math.Min(10f, s.Rest);
                 s.CaffeineHours = 0f; s.WarmthHours = 0f;
                 ApplyCold(s, environment);
+            }
+        }
+
+        public static void AdvanceSleepClock(SurvivalState s, float hours, SurvivalEnvironment environment)
+        {
+            // Bed rest spends existing timed consequences, but is not wakefulness:
+            // never cross a new deprivation threshold while restoring rest.
+            if (HasExhaustion(s))
+            {
+                ApplyCold(s, environment);
+                s.ExhaustionHoursRemaining = Math.Max(0, s.ExhaustionHoursRemaining - hours);
             }
         }
 

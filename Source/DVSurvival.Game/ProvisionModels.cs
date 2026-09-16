@@ -80,7 +80,9 @@ namespace DVSurvival.Mod
             for (int i = 0; i < vertices.Length; i++)
             {
                 var p = data.Vertices[i]; var t = data.TexCoords[i];
-                vertices[i] = new Vector3(p.X, p.Y, p.Z);
+                var size = kind == ProvisionKind.Meal || kind == ProvisionKind.Water ||
+                    kind == ProvisionKind.Coffee ? 0.8f : 1f;
+                vertices[i] = new Vector3(p.X, p.Y, p.Z) * size;
                 uv[i] = new Vector2(t.U, t.V);
             }
             var mesh = new Mesh { name = "DVSurvival_" + kind, vertices = vertices, uv = uv, triangles = data.Triangles.ToArray() };

@@ -138,7 +138,8 @@ namespace DVSurvival.Mod
         {
             var runtime = Main.Runtime;
             if (runtime == null || !runtime.IsSessionReady) return;
-            if (!DVSurvival.Core.SurvivalSimulator.CanRun(runtime.CurrentState) && !__instance.m_IsWalking)
+            if ((!DVSurvival.Core.SurvivalSimulator.CanRun(runtime.CurrentState) ||
+                (ProvisionUseAction.Active != null && ProvisionUseAction.Active.IsWorking)) && !__instance.m_IsWalking)
             {
                 var run = __instance.baseRunSpeed * __instance.runSpeedMultipiler;
                 // Preserve the native crouch/sitting and movement factors, replacing only sprint speed.
@@ -146,6 +147,7 @@ namespace DVSurvival.Mod
                 __instance.m_IsWalking = true;
             }
             __result *= runtime.MovementMultiplier;
+            if (ProvisionUseAction.Active != null && ProvisionUseAction.Active.IsWorking) __result *= 0.6f;
         }
     }
 }

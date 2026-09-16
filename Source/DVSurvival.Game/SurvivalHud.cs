@@ -12,7 +12,6 @@ namespace DVSurvival.Mod
         private SurvivalRuntime runtime;
         private SurvivalModSettings settings;
         private GUIStyle labelStyle;
-        private GUIStyle toastStyle;
         private GUIStyle plateStyle;
         private GUIStyle hudTextStyle;
         private GUIStyle legacyTitleStyle, legacyWarningStyle;
@@ -118,9 +117,19 @@ namespace DVSurvival.Mod
             if (repaint && !string.IsNullOrEmpty(toast) && Time.realtimeSinceStartup < toastUntil)
             {
                 var width = Math.Min(620f, Screen.width / scale - 40f);
-                GUI.Label(new Rect((Screen.width / scale - width) * 0.5f, 24f, width, 46f), toast, toastStyle);
+                DrawToast(new Rect((Screen.width / scale - width) * 0.5f, 24f, width, 46f), toast);
             }
             GUI.matrix = oldMatrix;
+            var use = ProvisionUseAction.Active;
+            if (use != null)
+            {
+                var box = new Rect((Screen.width - 280f) / 2f, Screen.height * 0.72f, 280f, 62f);
+                DrawProvisionStatus(box,
+                    ModLocalization.Provision(use.Kind) + (use.IsPortion ? " — " +
+                        ModLocalization.Number(use.Progress * 100f, "F1") + "%" : string.Empty), use.Progress,
+                    use.IsPortion ? ModLocalization.Text("Удерживайте ЛКМ — есть / пить", "Hold LMB to eat / drink") :
+                    ModLocalization.Text("ПКМ / убрать предмет — отмена", "RMB / put item away to cancel"));
+            }
         }
 
 
@@ -137,15 +146,21 @@ namespace DVSurvival.Mod
             collapseCoroutine = null;
         }
 
+        public void RefreshNow() { RefreshDisplayCache(true); }
+
         private void RefreshDisplayCache(bool force = false)
         {
             var now = Time.realtimeSinceStartup;
             if (!force && now < nextDisplayRefresh) return;
             nextDisplayRefresh = now + 0.25f;
-            var state = runtime == null ? null : runtime.CurrentState;
+            var state = runtime == null ? null : runtime.HudState;
             if (state == null) return;
             var warningEvents = warningTracker.Observe(state);
-            if (settings.ShowStatusWarnings) QueueStateWarning(warningEvents);
+            // Threshold warnings live on the affected gauge; only sleep explanations use toasts.
+            if (settings.ShowStatusWarnings) QueueStateWarning(warningEvents &
+                (SurvivalWarningEvent.LowRestOneDay | SurvivalWarningEvent.ExhaustionSoon |
+                 SurvivalWarningEvent.ExhaustionStarted | SurvivalWarningEvent.HallucinationSoon |
+                 SurvivalWarningEvent.HallucinationStarted | SurvivalWarningEvent.LowRestRecovered));
             healthFraction = state.Health / 100f;
             hungerFraction = state.Hunger / 100f;
             hydrationFraction = state.Hydration / 100f;
@@ -181,7 +196,7 @@ namespace DVSurvival.Mod
                 else if (state.LowRestGameHours >= 24d)
                     AddWarning(ModLocalization.Text("Недосып", "Sleep deprivation"));
             }
-            warningText = warningBuilder.ToString();
+            warningText = string.Empty;
             warningTitle = state.Health <= 10f || cachedBodyTemperature < 34f || cachedBodyTemperature > 40f ||
                 state.LowRestGameHours >= SleepDeprivationEffects.ExhaustionThresholdHours
                 ? ModLocalization.Text("Критическое состояние", "Critical condition")
@@ -190,12 +205,21 @@ namespace DVSurvival.Mod
             needFractions[2] = hydrationFraction; needFractions[3] = restFraction;
             needValues[0] = healthText; needValues[1] = hungerText;
             needValues[2] = hydrationText; needValues[3] = restText;
+            for (var i = 0; i < 4; i++)
+                needValues[i] = NeedAlertText.Format(state, i, needValues[i], settings.ShowStatusWarnings);
             needNames[0] = healthLabel; needNames[1] = hungerLabel;
             needNames[2] = hydrationLabel; needNames[3] = restLabel;
             compactBodyText = ModLocalization.Text("Тело: ", "Body: ") +
                 ModLocalization.Number(cachedBodyTemperature, "F1") + " °C";
             legacyBodyText = ModLocalization.Text("Температура тела  ", "Body temperature  ") +
                 ModLocalization.Number(cachedBodyTemperature, "F1") + " °C";
+            if (settings.ShowStatusWarnings && (cachedBodyTemperature > 38.5f || cachedBodyTemperature < 35f))
+            {
+                compactBodyText = "<color=#FF5555>! " + compactBodyText + "</color>";
+                legacyBodyText = "<color=#FF5555>! " + legacyBodyText + "</color>";
+            }
+            if (settings.ShowStatusWarnings && ambient > 55f)
+                ambientText = "<color=#FF5555>! " + ambientText + "</color>";
         }
 
         private void AddWarning(string label)
@@ -335,6 +359,7 @@ namespace DVSurvival.Mod
             hudFont = Font.CreateDynamicFontFromOSFont(new[] { "Georgia", "DejaVu Serif", "Times New Roman" }, 14);
             labelStyle = new GUIStyle(GUI.skin.label)
             {
+                richText = true,
                 alignment = TextAnchor.MiddleCenter,
                 font = hudFont,
                 fontStyle = FontStyle.Normal,
@@ -342,14 +367,6 @@ namespace DVSurvival.Mod
                 clipping = TextClipping.Clip,
                 padding = new RectOffset(0, 0, 0, 0),
                 normal = { textColor = new Color(0.90f, 0.87f, 0.80f) }
-            };
-            toastStyle = new GUIStyle(GUI.skin.box)
-            {
-                alignment = TextAnchor.MiddleCenter,
-                fontSize = 14,
-                fontStyle = FontStyle.Bold,
-                wordWrap = true,
-                normal = { textColor = Color.white }
             };
             plateStyle = new GUIStyle
             {
@@ -359,15 +376,16 @@ namespace DVSurvival.Mod
             hudTextStyle = new GUIStyle(labelStyle) { alignment = TextAnchor.MiddleLeft, clipping = TextClipping.Clip };
             legacyTitleStyle = new GUIStyle(hudTextStyle) { fontSize = 14, normal = { textColor = Brass } };
             legacyWarningStyle = new GUIStyle(hudTextStyle) { wordWrap = true, fontSize = 11 };
-            toastStyle.normal.background = artwork.Panel;
-            toastStyle.border = new RectOffset(16, 16, 16, 16);
             modernLeft = new GUIStyle(GUI.skin.label) {
+                richText = true,
                 fontSize = 12, alignment = TextAnchor.MiddleLeft, clipping = TextClipping.Clip,
                 padding = new RectOffset(0, 0, 0, 0), normal = { textColor = new Color(0.93f, 0.96f, 1f) }
             };
             modernCenter = new GUIStyle(modernLeft) { alignment = TextAnchor.MiddleCenter };
             modernNumber = new GUIStyle(modernCenter) { fontStyle = FontStyle.Bold, fontSize = 13 };
             modernSmall = new GUIStyle(modernLeft) { fontSize = 11 };
+            modernOverlayTitle = new GUIStyle(modernCenter) { fontSize = 14, fontStyle = FontStyle.Bold, wordWrap = true };
+            brassOverlayTitle = new GUIStyle(labelStyle) { fontSize = 14, fontStyle = FontStyle.Bold, wordWrap = true };
         }
 
         private static void DrawSolid(Rect rect, Color color)

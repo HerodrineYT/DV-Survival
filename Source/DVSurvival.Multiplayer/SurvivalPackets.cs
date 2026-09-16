@@ -156,6 +156,8 @@ namespace DVSurvival.Multiplayer
             writer.Write(value.HeatPackPrice);
             writer.Write(Safe(value.CabHeaterCarId, 80));
             writer.Write(value.CabHeaterLevel);
+            writer.Write(Safe(value.ItemIdentity, 80));
+            writer.Write(value.ItemUsedUnits);
             SurvivalStateCodec.Write(writer, value.State ?? new SurvivalState());
         }
 
@@ -182,6 +184,8 @@ namespace DVSurvival.Multiplayer
                 HeatPackPrice = reader.ReadInt32(),
                 CabHeaterCarId = Safe(reader.ReadString(), 80),
                 CabHeaterLevel = reader.ReadSingle(),
+                ItemIdentity = Safe(reader.ReadString(), 80),
+                ItemUsedUnits = reader.ReadInt32(),
                 State = SurvivalStateCodec.Read(reader)
             };
         }

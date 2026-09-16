@@ -19,14 +19,16 @@ namespace DVSurvival.Core
         Trauma = 4,
         ConsumePhysical = 5,
         SetCabHeater = 6,
-        SleepWithoutTimeAdvance = 7
+        SleepWithoutTimeAdvance = 7,
+        ConsumePortion = 8
     }
 
     public enum TraumaKind : byte
     {
         None = 0,
         Fall = 1,
-        TrainCollision = 2
+        TrainCollision = 2,
+        TrainDismount = 3
     }
 
     public enum SurvivalResultCode : byte

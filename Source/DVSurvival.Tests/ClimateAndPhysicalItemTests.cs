@@ -72,9 +72,12 @@ namespace DVSurvival.Tests
             var state=new SurvivalState { Health=20, FirstAid=13 };
             var tuning=new SurvivalTuning();
             Assert.Equal(SurvivalResultCode.Success,PhysicalItemLedger.Consume(consumed,id,state,ProvisionKind.FirstAid,tuning));
-            Assert.Equal(60,state.Health); Assert.Equal(13,state.FirstAid);
+            Assert.Equal(20,state.Health); Assert.Equal(20,state.FirstAidSecondsRemaining); Assert.Equal(13,state.FirstAid);
+            FirstAidRecovery.Advance(state, 10f);
             Assert.Equal(SurvivalResultCode.Success,PhysicalItemLedger.Consume(consumed,id,state,ProvisionKind.FirstAid,tuning));
-            Assert.Equal(60,state.Health); Assert.Single(consumed);
+            Assert.Equal(40,state.Health); Assert.Equal(10,state.FirstAidSecondsRemaining); Assert.Single(consumed);
+            FirstAidRecovery.Advance(state, 10f);
+            Assert.Equal(60,state.Health);
         }
         [Fact]
         public void UnneededPhysicalItemRemainsUsableLater()

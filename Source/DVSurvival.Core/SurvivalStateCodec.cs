@@ -29,6 +29,7 @@ namespace DVSurvival.Core
             writer.Write(state.LowRestGameHours);
             writer.Write(state.ExhaustionHoursRemaining);
             writer.Write(state.CoffeeUsesSinceSleep);
+            writer.Write(state.FirstAidSecondsRemaining);
         }
 
         public static SurvivalState Read(BinaryReader reader)
@@ -54,7 +55,8 @@ namespace DVSurvival.Core
                 SimulatedGameHours = reader.ReadDouble(),
                 LowRestGameHours = reader.ReadDouble(),
                 ExhaustionHoursRemaining = reader.ReadSingle(),
-                CoffeeUsesSinceSleep = reader.ReadInt32()
+                CoffeeUsesSinceSleep = reader.ReadInt32(),
+                FirstAidSecondsRemaining = reader.ReadSingle()
             };
             if (!state.IsValid()) throw new InvalidDataException("Invalid survival state payload.");
             return state;

@@ -94,14 +94,14 @@ namespace DVSurvival.Tests
         {
             var s = new SurvivalState { Rest = 40, LowRestGameHours = 20 };
             SurvivalSimulator.Sleep(s, 1, Room(), Tuning());
-            Assert.Equal(52.5f, s.Rest); Assert.Equal(21d, s.LowRestGameHours);
+            Assert.Equal(52.5f, s.Rest); Assert.Equal(20d, s.LowRestGameHours);
         }
         [Fact]
         public void ShortSleepCrossingAboveSeventyDoesNotRemoveHallucinations()
         {
             var s = new SurvivalState { Rest = 60, LowRestGameHours = 120 };
             SurvivalSimulator.Sleep(s, 1, Room(), Tuning());
-            Assert.Equal(72.5f, s.Rest); Assert.Equal(121, s.LowRestGameHours, 5);
+            Assert.Equal(72.5f, s.Rest); Assert.Equal(120, s.LowRestGameHours, 5);
             Assert.Equal(1f / 2.5f, SleepDeprivationEffects.DisplaySpeedMultiplier(s));
         }
         [Theory]
@@ -163,7 +163,7 @@ namespace DVSurvival.Tests
         {
             var s = new SurvivalState { Rest = 60, LowRestGameHours = 48.5, ExhaustionHoursRemaining = 2.5f };
             SurvivalSimulator.Sleep(s, 4, Room(), Tuning());
-            Assert.True(s.Hydration <= 10); Assert.Equal(52.5, s.LowRestGameHours, 5);
+            Assert.True(s.Hydration <= 10); Assert.Equal(48.5, s.LowRestGameHours, 5);
         }
         [Fact]
         public void SleepAfterWakePenaltyWindowDoesNotCapHydration()
@@ -178,12 +178,12 @@ namespace DVSurvival.Tests
             SurvivalSimulator.Sleep(s, .1f, Room(), Tuning()); Assert.InRange(s.Hydration, 0, 3);
         }
         [Fact]
-        public void SleepCanCrossTheTwoDayBoundaryIfRestNeverExceedsSeventy()
+        public void SleepCannotStartNewExhaustionEvenWhenRestStaysBelowSeventy()
         {
             var s = new SurvivalState { Rest = 0, LowRestGameHours = 47.5 };
             SurvivalSimulator.Sleep(s, 1, Room(), Tuning());
-            Assert.Equal(48.5, s.LowRestGameHours); Assert.Equal(2.5f, s.ExhaustionHoursRemaining);
-            Assert.True(s.Hydration <= 10);
+            Assert.Equal(47.5, s.LowRestGameHours); Assert.Equal(0f, s.ExhaustionHoursRemaining);
+            Assert.Equal(12.5f, s.Rest); Assert.True(s.Hydration > 10);
         }
         [Fact]
         public void CounterUsesEveryGameHourNotRestNeedsMultiplierOrRealSeconds()
@@ -274,7 +274,7 @@ namespace DVSurvival.Tests
         {
             var s = new SurvivalState { Rest = 57.5f, LowRestGameHours = 20 };
             SurvivalSimulator.Sleep(s, 1, Room(), Tuning());
-            Assert.Equal(70, s.Rest); Assert.Equal(21, s.LowRestGameHours);
+            Assert.Equal(70, s.Rest); Assert.Equal(20, s.LowRestGameHours);
         }
         [Fact]
         public void RemovedBottleKindCannotBeConsumedOrRecorded()

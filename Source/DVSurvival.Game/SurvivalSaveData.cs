@@ -33,6 +33,7 @@ namespace DVSurvival.Mod
         public string SessionId = string.Empty;
         public List<SurvivalPlayerRecord> Players = new List<SurvivalPlayerRecord>();
         public HashSet<string> ConsumedItems = new HashSet<string>(StringComparer.Ordinal);
+        public Dictionary<string, PartialProvisionRecord> PartialItems = new Dictionary<string, PartialProvisionRecord>(StringComparer.Ordinal);
         public List<CabHeaterSaveRecord> CabHeaters = new List<CabHeaterSaveRecord>();
 
         public SurvivalPlayerRecord GetOrCreate(string identityId, string displayName, SurvivalTuning tuning)
@@ -86,6 +87,7 @@ namespace DVSurvival.Mod
         {
             Version = SurvivalConstants.SaveVersion;
             if (ConsumedItems == null) ConsumedItems = new HashSet<string>(StringComparer.Ordinal);
+            if (PartialItems == null) PartialItems = new Dictionary<string, PartialProvisionRecord>(StringComparer.Ordinal);
             if (CabHeaters == null) CabHeaters = new List<CabHeaterSaveRecord>();
             Guid sessionGuid;
             if (!Guid.TryParse(SessionId, out sessionGuid) || sessionGuid == Guid.Empty)

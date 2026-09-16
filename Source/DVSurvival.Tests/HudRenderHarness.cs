@@ -68,6 +68,18 @@ namespace DVSurvival.Mod
         private static void DrawSolid(Rect rect, Color color) => GUI.Commands.Add(new { kind = "solid", rect, color });
         private void DrawPlate(Rect rect) => GUI.Commands.Add(new { kind = "plate", rect });
 
+        internal List<object> RecordOverlays(int style)
+        {
+            GUI.Commands = new List<object>();
+            settings.HudStyle = style;
+            modernCenter = new GUIStyle { align = "center" };
+            modernOverlayTitle = new GUIStyle { align = "center", size = 14 };
+            brassOverlayTitle = new GUIStyle { align = "center", size = 14, font = "Georgia" };
+            DrawToast(new Rect(330, 24, 620, 46), "Сон восстановлен / Rest restored");
+            DrawProvisionStatus(new Rect(500, 500, 280, 62), "Кофе — 63,5%", .635f, "Удерживайте ЛКМ — есть / пить");
+            return GUI.Commands;
+        }
+
         internal List<object> Record(int style, bool warning, bool english)
         {
             GUI.Commands = new List<object>();
@@ -83,6 +95,11 @@ namespace DVSurvival.Mod
             var names = english ? new[] { "Health", "Food", "Water", "Rest" } : new[] { "Здоровье", "Сытость", "Вода", "Сон" };
             var values = new[] { .85f, .72f, .64f, .9f };
             for (var i = 0; i < 4; i++) { needNames[i] = names[i]; needFractions[i] = values[i]; needValues[i] = (values[i] * 100).ToString("F0") + "%"; }
+            if (warning)
+            {
+                needFractions[0] = .1f;
+                needValues[0] = NeedAlertText.Format(new SurvivalState { Health = 10 }, 0, "10%", true);
+            }
             DrawLayout(1);
             return GUI.Commands;
         }
@@ -105,8 +122,10 @@ namespace DVSurvival.Tests
                 {
                 var labels = document.RootElement.EnumerateArray().Where(x => x.GetProperty("kind").GetString() == "text")
                     .Select(x => x.GetProperty("text").GetString()).ToArray();
-                foreach (var value in new[] { "85%", "72%", "64%", "90%" }) Assert.Contains(value, labels);
+                foreach (var value in new[] { warning ? "<color=#FF5555>! 10%</color>" : "85%", "72%", "64%", "90%" }) Assert.Contains(value, labels);
                 Assert.Contains(labels, x => x.Contains("37.0")); Assert.Contains(labels, x => x.Contains("-3.1"));
+                Assert.DoesNotContain("Needs attention", labels);
+                Assert.DoesNotContain("Требуется внимание", labels);
                 foreach (var command in document.RootElement.EnumerateArray())
                 {
                     var rect = command.GetProperty("rect");
@@ -116,10 +135,10 @@ namespace DVSurvival.Tests
                     Assert.True(rect.GetProperty("y").GetSingle() + rect.GetProperty("height").GetSingle() <= Screen.height - 20);
                 }
                 var output = Environment.GetEnvironmentVariable("DVSURVIVAL_HUD_PREVIEW_DIR");
-                if (!string.IsNullOrEmpty(output) && !warning)
+                if (!string.IsNullOrEmpty(output))
                 {
                     Directory.CreateDirectory(output);
-                    File.WriteAllText(Path.Combine(output, $"style-{style}-{(english ? "en" : "ru")}.json"), json);
+                    File.WriteAllText(Path.Combine(output, $"style-{style}-{(english ? "en" : "ru")}{(warning ? "-alert" : "")}.json"), json);
                 }
                 }
             }
