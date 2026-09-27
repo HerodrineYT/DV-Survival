@@ -91,6 +91,7 @@ namespace DVSurvival.Mod
             __state = default(CalendarCapture);
             var runtime = Main.Runtime;
             if (force || runtime == null) return;
+            runtime.RefreshLocalTravelPause();
             __state.IsNativeSleep = NativeSleepOriginPatch.IsAdvancingSleep;
             DateTime before;
             if (!runtime.TryGetGameDateTime(out before) || before == DateTime.MinValue ||

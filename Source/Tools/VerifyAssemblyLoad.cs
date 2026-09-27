@@ -31,12 +31,20 @@ internal static class VerifyAssemblyLoad
             Console.WriteLine("OK: per-item description implements native IInventoryItemLocalizer");
             var bindingsAssembly = Assembly.LoadFrom(Path.Combine(args[0], "DVSurvival.dll"));
             var settingsType = bindingsAssembly.GetType("DVSurvival.Mod.SurvivalModSettings", true);
+            VerifyNeedsConsumptionSetting(settingsType);
             if (bindingsAssembly.GetType("DVSurvival.Mod.CabControlBindings", false) != null ||
                 settingsType.GetField("HeaterButtons") != null || settingsType.GetField("FanButtons") != null)
                 throw new InvalidOperationException("Removed cab key bindings remain in the runtime.");
             if (bindingsAssembly.GetType("DVSurvival.Mod.CabHeaterSwitchSystem", false) == null)
                 throw new InvalidOperationException("Physical cab heater controls must remain available.");
             Console.WriteLine("OK: cab key bindings removed; physical heater controls retained");
+            RequireMethod(Path.Combine(args[1], "Assembly-CSharp.dll"), "DV.PostProcessingVolumeAOController",
+                "OnEnable", BindingFlags.NonPublic | BindingFlags.Instance);
+            RequireMethod(Path.Combine(args[1], "Assembly-CSharp.dll"), "TutorialPlayerDetector",
+                "Awake", BindingFlags.NonPublic | BindingFlags.Instance);
+            RequireMethod(Path.Combine(args[1], "Assembly-CSharp.dll"), "DV.Simulation.Cars.FireboxSimController",
+                "Init", BindingFlags.Public | BindingFlags.Instance);
+            Console.WriteLine("OK: native office and firebox lifecycle hook targets present");
             VerifyGameApis(args[1], offline ? null : args[3]);
             VerifyDigitalSpeedometerPatch(args[0], args[1], args[2]);
             VerifyNativeSleepPatch(args[0], args[1], args[2]);
@@ -214,8 +222,47 @@ internal static class VerifyAssemblyLoad
         }
     }
 
+    private static void VerifyNeedsConsumptionSetting(Type settingsType)
+    {
+        var field = settingsType.GetField("DisableNeedsConsumption");
+        if (field == null || field.FieldType != typeof(bool))
+            throw new InvalidOperationException("Needs consumption setting is missing.");
+        var serializer = new System.Xml.Serialization.XmlSerializer(settingsType);
+        var defaults = Activator.CreateInstance(settingsType);
+        if ((bool)field.GetValue(defaults)) throw new InvalidOperationException("Consumption must default to enabled.");
+        field.SetValue(defaults, true);
+        object loaded;
+        using (var xml = new StringWriter())
+        {
+            serializer.Serialize(xml, defaults);
+            loaded = serializer.Deserialize(new StringReader(xml.ToString()));
+        }
+        var tuning = settingsType.GetMethod("ToTuning").Invoke(loaded, null);
+        if (!(bool)field.GetValue(loaded) ||
+            !(bool)tuning.GetType().GetField("DisableNeedsConsumption").GetValue(tuning))
+            throw new InvalidOperationException("Saved consumption setting did not reach simulation tuning.");
+        var legacy = serializer.Deserialize(new StringReader("<SurvivalModSettings />"));
+        if ((bool)field.GetValue(legacy)) throw new InvalidOperationException("Legacy settings changed consumption default.");
+        Console.WriteLine("OK: needs consumption setting persists, maps to tuning and keeps legacy defaults");
+    }
+
     private static void VerifyGameApis(string managedDirectory, string multiplayerDirectory)
     {
+        var nativeUi = Assembly.LoadFrom(Path.Combine(managedDirectory, "DV.UI.dll"));
+        var hudManager = nativeUi.GetType("DV.UI.LocoHUD.HUDManager", true);
+        var locoControls = nativeUi.GetType("DV.UI.LocoHUD.HUDLocoControls", true);
+        var currentHud = hudManager.GetField("currentHUD");
+        var panelRect = locoControls.GetField("hudRect");
+        if (currentHud == null || currentHud.FieldType != locoControls || panelRect == null ||
+            panelRect.FieldType.FullName != "UnityEngine.RectTransform")
+            throw new MissingFieldException("Native locomotive HUD panel binding changed.");
+        foreach (var fieldName in new[] { "locoHUDVisible", "cursorButtonsVisible" })
+        {
+            var field = hudManager.GetField(fieldName);
+            if (field == null || field.FieldType != typeof(bool))
+                throw new MissingFieldException(hudManager.FullName, fieldName);
+        }
+        Console.WriteLine("OK: native F4 HUD visibility and animated panel bindings are present");
         RequireMethod(Path.Combine(managedDirectory, "Assembly-CSharp.dll"), "LoadingScreenManager",
             "get_IsLoading", BindingFlags.Public | BindingFlags.Static);
         RequireMethod(Path.Combine(managedDirectory, "Assembly-CSharp.dll"), "FastTravelController",

@@ -110,7 +110,7 @@ namespace DVSurvival.Core
                 IsFiniteInRange(FirstAidSecondsRemaining, 0f, FirstAidRecovery.DurationSeconds) &&
                 IsFiniteInRange(BodyTemperatureCelsius, 30f, 43f) &&
                 IsFiniteInRange(CaffeineHours, 0f, 48f) &&
-                CoffeeUsesSinceSleep >= 0 && CoffeeUsesSinceSleep <= 10 &&
+                CoffeeUsesSinceSleep >= 0 && CoffeeUsesSinceSleep <= CoffeeTolerance.MaximumTrackedCups &&
                 IsFiniteInRange(WarmthHours, 0f, 48f) &&
                 !double.IsNaN(LowRestGameHours) && !double.IsInfinity(LowRestGameHours) &&
                 LowRestGameHours >= 0d &&
@@ -133,7 +133,7 @@ namespace DVSurvival.Core
             FirstAidSecondsRemaining = ClampFinite(FirstAidSecondsRemaining, 0f, FirstAidRecovery.DurationSeconds, 0f);
             BodyTemperatureCelsius = ClampFinite(BodyTemperatureCelsius, 30f, 43f, 37f);
             CaffeineHours = ClampFinite(CaffeineHours, 0f, 48f, 0f);
-            CoffeeUsesSinceSleep = Clamp(CoffeeUsesSinceSleep, 0, 10);
+            CoffeeUsesSinceSleep = Clamp(CoffeeUsesSinceSleep, 0, CoffeeTolerance.MaximumTrackedCups);
             WarmthHours = ClampFinite(WarmthHours, 0f, 48f, 0f);
             LowRestGameHours = double.IsNaN(LowRestGameHours) || double.IsInfinity(LowRestGameHours)
                 ? 0d : Math.Max(0d, Math.Min(SleepDeprivationEffects.MaximumLowRestHours,

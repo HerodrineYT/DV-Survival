@@ -9,8 +9,8 @@ $projectRoot = Split-Path -Parent $PSScriptRoot
 $output = Join-Path $projectRoot 'artifacts\build\DVSurvival'
 $manifestSource = Join-Path $projectRoot 'DVSurvival.Game\info.source.json'
 $manifest = Get-Content -LiteralPath $manifestSource -Raw | ConvertFrom-Json
-$releaseVersion = '0.1.1'
-$protocolVersion = 21
+$releaseVersion = '0.1.2'
+$protocolVersion = 23
 
 if ($manifest.Id -ne 'DVSurvival') { throw 'Unexpected mod id in info.source.json.' }
 if ($manifest.Version -ne $releaseVersion) { throw 'Manifest version does not match this release.' }
@@ -42,7 +42,7 @@ $sourceRequired = @(
     'DVSurvival.Game\PlayerImpactMonitor.cs',
     'DVSurvival.Game\SurvivalHud.cs',
     'DVSurvival.Multiplayer\MultiplayerSurvivalBridge.cs',
-    'Docs\RELEASE_0.1.1_RU.md',
+    'Docs\RELEASE_0.1.2_RU.md',
     'dependencies.lock.json',
     'README.md'
 )
@@ -89,8 +89,8 @@ if ($runtimeSource -notmatch 'activeRecords\.TryGetValue\(localId, out existing\
 if ($runtimeSource -notmatch 'AppUtilProbeIntervalSeconds') {
     throw 'AppUtil lookup must remain cached and rate-limited.'
 }
-if ($environmentSource -notmatch 'FireboxScanIntervalSeconds' -or
-    $environmentSource -notmatch 'nextFireboxScan') {
+if ($environmentSource -notmatch 'FireboxRegistry.GetLoaded\(\)' -or
+    $environmentSource -match 'FindObjectsOfType<FireboxSimController>') {
     throw 'Firebox discovery must remain cached and rate-limited.'
 }
 if ($environmentSource -notmatch 'TrainCarType\.LocoDM1U' -or
@@ -247,8 +247,23 @@ if ($environmentSource -notmatch 'stationOffices\.Contains\(BuildingProbePositio
     $officeSource -notmatch 'TutorialPlayerDetectorType\.StationOffice' -or
     $officeSource -notmatch 'InverseTransformPoint\(position\) - room\.center' -or
     $officeSource -notmatch 'room\.size \* \.5f' -or
-    $officeSource -notmatch 'nextScan = Time\.realtimeSinceStartup \+ 3f') {
+    $officeSource -notmatch 'nextScan = Time\.realtimeSinceStartup \+ 30f') {
     throw 'Station offices must use cached authored room volumes, camera containment and a heating-only thermostat.'
+}
+$climateLifecycleSource = Get-Content -LiteralPath (Join-Path $projectRoot 'DVSurvival.Game\ClimateObjectLifecycle.cs') -Raw
+$climateSceneSource = Get-Content -LiteralPath (Join-Path $projectRoot 'DVSurvival.Game\ClimateSceneDiscovery.cs') -Raw
+$fireboxSource = Get-Content -LiteralPath (Join-Path $projectRoot 'DVSurvival.Game\FireboxRegistry.cs') -Raw
+if ($climateLifecycleSource -notmatch 'typeof\(PostProcessingVolumeAOController\), "OnEnable"' -or
+    $climateLifecycleSource -notmatch 'typeof\(TutorialPlayerDetector\), "Awake"' -or
+    $climateLifecycleSource -notmatch 'nameof\(FireboxSimController.Init\)' -or
+    $climateSceneSource -notmatch 'SceneManager.sceneLoaded \+=' -or
+    $climateSceneSource -notmatch 'SceneManager.sceneLoaded -=' -or
+    $climateSceneSource -notmatch 'scene.GetRootGameObjects' -or
+    $fireboxSource -notmatch 'nextScan = Time.realtimeSinceStartup \+ 30f' -or
+    $environmentSource -match 'FindObjectsOfType<FireboxSimController>' -or
+    $environmentSource -notmatch 'cabScanRetry.RecordAttempt' -or
+    $environmentSource -notmatch 'cabinStatus.Capture') {
+    throw 'Climate discovery must keep lifecycle registration, rare reconciliation, retry backoff and lazy diagnostics.'
 }
 if ((Get-Content -LiteralPath (Join-Path $projectRoot 'DVSurvival.Game\SurvivalModSettings.cs') -Raw) -notmatch
     'TemperatureChangeMultiplier') {
@@ -308,11 +323,21 @@ if ($patchSource -notmatch 'HarmonyPatch\(typeof\(TimeAdvance\), "AdvanceTime"\)
 if ($hudSource -notmatch '!LoadingScreenManager.IsLoading' -or
     $hudSource -notmatch '!FastTravelController.IsFastTravelling' -or
     $hudSource -notmatch '!runtime.IsHomeTravelPending' -or
+    $hudSource -notmatch '!locoHudVisibility.BlocksSurvivalHud\(\)' -or
     ([regex]::Matches($hudSource, 'if \(!CanDisplay\(\)\) return;').Count -ne 2)) {
-    throw 'HUD drawing and refresh must stop during native travel, loading and pending home respawn.'
+    throw 'HUD drawing and refresh must stop during native travel, loading, pending home respawn and the locomotive menu.'
 }
 if ($bridgeSource -notmatch 'get \{ return isSupported; \}') {
     throw 'Multiplayer version compatibility must remain cached.'
+}
+if ($runtimeSource -notmatch 'RefreshLocalTravelPause\(\)' -or
+    $runtimeSource -notmatch 'calendarTravelPauses.TryGetValue\(advance.SourceJumpSequence' -or
+    $runtimeSource -notmatch 'travelPausedPlayers: observedTravelPause' -or
+    $runtimeSource -notmatch 'travelPause.Update\(player.PlayerId, report.IsTravelling' -or
+    $runtimeSource -notmatch 'string.Equals\(report.SessionId, document.SessionId' -or
+    $patchSource -notmatch 'runtime.RefreshLocalTravelPause\(\)' -or
+    $bridgeSource -notmatch 'new SurvivalEnvironmentPacket \{ Report = report \}, true') {
+    throw 'Personal travel pause, deferred calendar protection or reliable session-scoped reports are missing.'
 }
 if ($mainSource -match '\[EnableReloading\]') {
     throw 'Hot reload is unsafe because Multiplayer packet handlers cannot be unregistered.'
@@ -327,6 +352,13 @@ $modelsSource = Get-Content -LiteralPath (Join-Path $projectRoot 'DVSurvival.Gam
 $inventoryArtworkSource = Get-Content -LiteralPath (Join-Path $projectRoot 'DVSurvival.Game\ProvisionInventoryArtwork.cs') -Raw
 $layoutSource = Get-Content -LiteralPath (Join-Path $projectRoot 'DVSurvival.Game\SurvivalHud.Layouts.cs') -Raw
 $settingsSource = Get-Content -LiteralPath (Join-Path $projectRoot 'DVSurvival.Game\SurvivalModSettings.cs') -Raw
+if ($settingsSource -notmatch 'DisableNeedsConsumption = DisableNeedsConsumption' -or
+    $mainSource -notmatch 'settings.DisableNeedsConsumption = GUILayout.Toggle' -or
+    $runtimeSource -notmatch 'previewTuning.DisableNeedsConsumption = lastHostMessage.DisableNeedsConsumption' -or
+    $runtimeSource -notmatch 'DisableNeedsConsumption = tuning.DisableNeedsConsumption' -or
+    'Disable needs consumption' -notin $translations.English) {
+    throw 'Needs-consumption setting, localization or host-authoritative sleep preview is missing.'
+}
 if ($catalogSource -notmatch 'new ShelfDisplayLayout' -or
     $catalogSource -notmatch 'display.localPosition = new Vector3\(placement.OffsetX, placement.OffsetY, placement.OffsetZ\)' -or
     $catalogSource -notmatch 'shelfItem.height = placement.Height' -or

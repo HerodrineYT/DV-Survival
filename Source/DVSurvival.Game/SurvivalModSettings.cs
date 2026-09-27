@@ -17,6 +17,7 @@ namespace DVSurvival.Mod
         public int HudStyle = HudLayout.Legacy;
         public float CompactHudScale = 1.75f;
         public bool HudLegacyRestored = false;
+        public bool DisableNeedsConsumption = false;
         public float NeedsRateMultiplier = 1f;
         public float DamageMultiplier = 1f;
         public float TemperatureChangeMultiplier = 1.5f;
@@ -44,6 +45,7 @@ namespace DVSurvival.Mod
             Clamp();
             var value = new SurvivalTuning
             {
+                DisableNeedsConsumption = DisableNeedsConsumption,
                 NeedsRateMultiplier = NeedsRateMultiplier,
                 DamageMultiplier = DamageMultiplier,
                 ThermalTimeConstantHours = 1.5f / TemperatureChangeMultiplier,

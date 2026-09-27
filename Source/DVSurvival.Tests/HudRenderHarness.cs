@@ -13,6 +13,7 @@ namespace UnityEngine
     internal struct Rect
     {
         public float x, y, width, height;
+        public float yMax => y + height;
         public Rect(float x, float y, float width, float height) { this.x = x; this.y = y; this.width = width; this.height = height; }
     }
     internal struct Color

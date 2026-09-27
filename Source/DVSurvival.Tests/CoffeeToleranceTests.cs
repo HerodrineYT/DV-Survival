@@ -10,21 +10,21 @@ namespace DVSurvival.Tests
     public sealed class CoffeeToleranceTests
     {
         [Fact]
-        public void EachSuccessfulCupLosesTenPercentOfBaseGainAndNeverBecomesNegative()
+        public void FirstFiveCupsStayFullThenEachCupLosesFivePercentAndNeverBecomesNegative()
         {
             var s = new SurvivalState();
-            for (int i = 0; i < 20; i++)
+            for (int i = 0; i < 35; i++)
             {
                 s.Rest = 20;
                 Assert.Equal(SurvivalResultCode.Success, SurvivalSimulator.ConsumePhysical(s, ProvisionKind.Coffee, new SurvivalTuning()));
-                Assert.Equal(20f + 16f * Math.Max(0, 10-i) / 10f, s.Rest, 4);
-                Assert.Equal(Math.Min(10,i+1), s.CoffeeUsesSinceSleep);
+                Assert.Equal(20f + 16f * Math.Max(0, 20 - Math.Max(0, i - 4)) / 20f, s.Rest, 4);
+                Assert.Equal(Math.Min(25,i+1), s.CoffeeUsesSinceSleep);
             }
         }
         [Fact]
         public void DepletedRestEffectDoesNotReduceWaterOrWarmthBenefits()
         {
-            var s = new SurvivalState { Rest = 25, Hydration = 50, BodyTemperatureCelsius = 36, CoffeeUsesSinceSleep = 10 };
+            var s = new SurvivalState { Rest = 25, Hydration = 50, BodyTemperatureCelsius = 36, CoffeeUsesSinceSleep = 25 };
             SurvivalSimulator.ConsumePhysical(s, ProvisionKind.Coffee, new SurvivalTuning());
             Assert.Equal(25, s.Rest); Assert.Equal(65, s.Hydration); Assert.Equal(36.2f, s.BodyTemperatureCelsius, 4);
         }
@@ -63,7 +63,7 @@ namespace DVSurvival.Tests
             var ledger = new HashSet<string>(); var id = Guid.NewGuid().ToString("D");
             for (int i=0;i<2;i++)
                 Assert.Equal(SurvivalResultCode.Success, PhysicalItemLedger.Consume(ledger,id,s,ProvisionKind.Coffee,new SurvivalTuning()));
-            Assert.Equal(3, s.CoffeeUsesSinceSleep); Assert.Equal(32.8f, s.Rest, 4);
+            Assert.Equal(3, s.CoffeeUsesSinceSleep); Assert.Equal(36f, s.Rest, 4);
         }
         [Fact]
         public void ToleranceAndItsSleepResetArePersonal()
@@ -72,22 +72,23 @@ namespace DVSurvival.Tests
             var b = new SurvivalState { Rest = 20 };
             SurvivalSimulator.ConsumePhysical(a, ProvisionKind.Coffee, new SurvivalTuning());
             SurvivalSimulator.ConsumePhysical(b, ProvisionKind.Coffee, new SurvivalTuning());
-            Assert.Equal(28, a.Rest); Assert.Equal(36, b.Rest);
+            Assert.Equal(35.2f, a.Rest, 4); Assert.Equal(36, b.Rest);
             SurvivalSimulator.Sleep(b, 1, new SurvivalEnvironment(), new SurvivalTuning());
             Assert.Equal(6, a.CoffeeUsesSinceSleep); Assert.Equal(0, b.CoffeeUsesSinceSleep);
         }
-        [Fact]
-        public void CloneCodecAndSavePreserveToleranceAndOlderSavesDefaultToFullEffect()
+        [Theory]
+        [InlineData(7)] [InlineData(15)] [InlineData(25)]
+        public void CloneCodecAndSavePreserveToleranceAndOlderSavesDefaultToFullEffect(int uses)
         {
-            var s = new SurvivalState { CoffeeUsesSinceSleep = 7 };
-            Assert.Equal(7, s.Clone().CoffeeUsesSinceSleep);
+            var s = new SurvivalState { CoffeeUsesSinceSleep = uses };
+            Assert.Equal(uses, s.Clone().CoffeeUsesSinceSleep);
             using (var stream = new MemoryStream())
             {
                 SurvivalStateCodec.Write(new BinaryWriter(stream), s); stream.Position = 0;
-                Assert.Equal(7, SurvivalStateCodec.Read(new BinaryReader(stream)).CoffeeUsesSinceSleep);
+                Assert.Equal(uses, SurvivalStateCodec.Read(new BinaryReader(stream)).CoffeeUsesSinceSleep);
             }
             var options = new JsonSerializerOptions { IncludeFields = true };
-            Assert.Equal(7, JsonSerializer.Deserialize<SurvivalState>(JsonSerializer.Serialize(s,options),options).CoffeeUsesSinceSleep);
+            Assert.Equal(uses, JsonSerializer.Deserialize<SurvivalState>(JsonSerializer.Serialize(s,options),options).CoffeeUsesSinceSleep);
             var old = JsonSerializer.Deserialize<SurvivalState>("{\"Rest\":45}", options);
             Assert.Equal(0, old.CoffeeUsesSinceSleep); Assert.Equal(45, old.Rest);
         }
@@ -96,15 +97,24 @@ namespace DVSurvival.Tests
         {
             var s = new SurvivalState { Rest = 60, LowRestGameHours = 120, CoffeeUsesSinceSleep = 5 };
             SurvivalSimulator.ConsumePhysical(s, ProvisionKind.Coffee, new SurvivalTuning());
-            Assert.Equal(68, s.Rest); Assert.Equal(120, s.LowRestGameHours);
+            Assert.Equal(75.2f, s.Rest, 4); Assert.Equal(120, s.LowRestGameHours);
             Assert.Equal(1f/2.5f, SleepDeprivationEffects.DisplaySpeedMultiplier(s));
         }
         [Theory]
-        [InlineData(-1,0)] [InlineData(100,10)]
+        [InlineData(-1,0)] [InlineData(100,25)]
         public void ClampBoundsTolerance(int invalid,int expected)
         {
             var s = new SurvivalState { CoffeeUsesSinceSleep = invalid };
             Assert.False(s.IsValid()); s.Clamp(); Assert.True(s.IsValid()); Assert.Equal(expected, s.CoffeeUsesSinceSleep);
+        }
+
+        [Theory]
+        [InlineData(0, 1f)] [InlineData(4, 1f)] [InlineData(5, .95f)]
+        [InlineData(6, .90f)] [InlineData(23, .05f)] [InlineData(24, 0f)]
+        [InlineData(25, 0f)] [InlineData(int.MaxValue, 0f)]
+        public void NextCupHasCorrectBoundaryEffect(int previousCups, float expected)
+        {
+            Assert.Equal(expected, CoffeeTolerance.NextRestMultiplier(previousCups));
         }
     }
 }

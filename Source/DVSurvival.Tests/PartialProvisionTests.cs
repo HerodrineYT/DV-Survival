@@ -41,7 +41,7 @@ namespace DVSurvival.Tests
             var s = new SurvivalState { Rest = 0, Hydration = 0, BodyTemperatureCelsius = 36, CoffeeUsesSinceSleep = 2 };
             for (var units = 10; units <= 1000; units += 10)
                 PartialProvisionLedger.Consume(partial, consumed, id, units, s, ProvisionKind.Coffee, out _);
-            Assert.Equal(12.8f, s.Rest, 3);
+            Assert.Equal(16f, s.Rest, 3);
             Assert.Equal(15f, s.Hydration, 3);
             Assert.Equal(36.2f, s.BodyTemperatureCelsius, 3);
             Assert.Equal(4f, s.CaffeineHours, 3);

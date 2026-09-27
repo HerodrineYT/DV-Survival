@@ -73,6 +73,8 @@ Copy-Item -LiteralPath (Join-Path $projectRoot 'Docs\USER_GUIDE_RU.md') -Destina
 Copy-Item -LiteralPath (Join-Path $projectRoot 'Docs\MULTIPLAYER_ARCHITECTURE_RU.md') -Destination (Join-Path $output 'Docs') -Force
 Copy-Item -LiteralPath (Join-Path $projectRoot 'Docs\CUSTOM_ITEM_MOD_INTEGRATION_RU.md') -Destination (Join-Path $output 'Docs') -Force
 Copy-Item -LiteralPath (Join-Path $projectRoot 'Docs\RELEASE_0.1.1_RU.md') -Destination (Join-Path $output 'Docs') -Force
+Copy-Item -LiteralPath (Join-Path $projectRoot 'Docs\RELEASE_0.1.2_RU.md') -Destination (Join-Path $output 'Docs') -Force
+Copy-Item -LiteralPath (Join-Path $projectRoot 'Docs\PERFORMANCE_0.1.1_RU.md') -Destination (Join-Path $output 'Docs') -Force
 
 & (Join-Path $PSScriptRoot 'verify_project.ps1') -RequireBuildOutput -DVInstallDir $game
 if ($LASTEXITCODE -ne 0) { throw 'Project verification failed.' }

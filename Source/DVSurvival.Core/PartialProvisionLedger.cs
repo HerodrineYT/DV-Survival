@@ -44,7 +44,7 @@ namespace DVSurvival.Core
                 item = new PartialProvisionRecord { Kind = kind, CoffeeRestMultiplier = SurvivalSimulator.GetCoffeeRestMultiplier(state) };
                 portions.Add(identity, item);
                 if (kind == ProvisionKind.Coffee)
-                    state.CoffeeUsesSinceSleep = Math.Min(10, state.CoffeeUsesSinceSleep + 1);
+                    CoffeeTolerance.RegisterCup(state);
             }
             var fraction = (targetUnits - usedUnits) / (float)FullUnits;
             switch (kind)

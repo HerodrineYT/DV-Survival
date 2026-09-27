@@ -113,13 +113,22 @@ namespace DVSurvival.Multiplayer
             writer.Write(value.ShelterWarmthCelsius);
             writer.Write(value.ThermalRecoveryMultiplier);
             writer.Write(value.IsWinter);
+            writer.Write(report.SessionId != null && report.SessionId.Length <= 80
+                ? report.SessionId : string.Empty);
+            writer.Write(report.IsTravelling);
         }
 
         public void Deserialize(BinaryReader reader)
         {
+            var protocol = reader.ReadInt32();
+            if (protocol != SurvivalConstants.ProtocolVersion)
+            {
+                Report = new SurvivalEnvironmentReport { Protocol = protocol };
+                return;
+            }
             Report = new SurvivalEnvironmentReport
             {
-                Protocol = reader.ReadInt32(),
+                Protocol = protocol,
                 Sequence = reader.ReadUInt32(),
                 Environment = new SurvivalEnvironment
                 {
@@ -133,6 +142,9 @@ namespace DVSurvival.Multiplayer
                     IsWinter = reader.ReadBoolean()
                 }
             };
+            var sessionId = reader.ReadString();
+            Report.SessionId = sessionId.Length <= 80 ? sessionId : string.Empty;
+            Report.IsTravelling = reader.ReadBoolean();
         }
     }
 
@@ -159,6 +171,7 @@ namespace DVSurvival.Multiplayer
             writer.Write(Safe(value.ItemIdentity, 80));
             writer.Write(value.ItemUsedUnits);
             SurvivalStateCodec.Write(writer, value.State ?? new SurvivalState());
+            writer.Write(value.DisableNeedsConsumption);
         }
 
         public void Deserialize(BinaryReader reader)
@@ -186,7 +199,8 @@ namespace DVSurvival.Multiplayer
                 CabHeaterLevel = reader.ReadSingle(),
                 ItemIdentity = Safe(reader.ReadString(), 80),
                 ItemUsedUnits = reader.ReadInt32(),
-                State = SurvivalStateCodec.Read(reader)
+                State = SurvivalStateCodec.Read(reader),
+                DisableNeedsConsumption = reader.ReadBoolean()
             };
         }
 

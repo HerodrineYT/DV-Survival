@@ -29,7 +29,7 @@ namespace DVSurvival.Tests
                     Amount = 20f, SecondaryAmount = 1.8f, SessionId = "current-host-epoch"
                 }
             }, new SurvivalActionPacket());
-            Assert.Equal(21, copy.Request.Protocol);
+            Assert.Equal(23, copy.Request.Protocol);
             Assert.Equal(TraumaKind.TrainDismount, copy.Request.Trauma);
             Assert.Equal(20f, copy.Request.Amount);
         }
@@ -44,7 +44,7 @@ namespace DVSurvival.Tests
                     Amount = 10f, SessionId = "current-host-epoch", RequestId = 19u
                 }
             }, new SurvivalActionPacket());
-            Assert.Equal(21, copy.Request.Protocol);
+            Assert.Equal(23, copy.Request.Protocol);
             Assert.Equal(SurvivalActionKind.SleepWithoutTimeAdvance, copy.Request.Action);
             Assert.Equal(10f, copy.Request.Amount);
             Assert.Equal(0L, copy.Request.CalendarBeforeTicks);
@@ -139,7 +139,7 @@ namespace DVSurvival.Tests
             Assert.Equal(99u, copy.Message.State.Revision);
             Assert.Equal(126.75d, copy.Message.State.LowRestGameHours);
             Assert.Equal(2.25f, copy.Message.State.ExhaustionHoursRemaining);
-            Assert.Equal(21, copy.Message.Protocol);
+            Assert.Equal(23, copy.Message.Protocol);
             Assert.Equal(6, copy.Message.State.CoffeeUsesSinceSleep);
         }
 
@@ -233,6 +233,8 @@ namespace DVSurvival.Tests
                 Report = new SurvivalEnvironmentReport
                 {
                     Sequence = 44,
+                    SessionId = "current-host-epoch",
+                    IsTravelling = true,
                     Environment = new SurvivalEnvironment
                     {
                         AmbientTemperatureCelsius = 37.5f,
@@ -244,9 +246,44 @@ namespace DVSurvival.Tests
             }, new SurvivalEnvironmentPacket());
 
             Assert.Equal(44u, packet.Report.Sequence);
+            Assert.Equal("current-host-epoch", packet.Report.SessionId);
+            Assert.True(packet.Report.IsTravelling);
             Assert.Equal(37.5f, packet.Report.Environment.AmbientTemperatureCelsius);
             Assert.Equal(2.15f, packet.Report.Environment.ThermalRecoveryMultiplier);
             Assert.True(packet.Report.Environment.IsValid());
+        }
+
+        [Theory]
+        [InlineData(17)]
+        [InlineData(21)]
+        [InlineData(22)]
+        public void OldEnvironmentPacketIsRejectedBeforeReadingTravelFields(int protocol)
+        {
+            using (var stream = new MemoryStream())
+            {
+                new BinaryWriter(stream).Write(protocol);
+                stream.Position = 0;
+                var packet = new SurvivalEnvironmentPacket();
+                packet.Deserialize(new BinaryReader(stream));
+                Assert.Equal(protocol, packet.Report.Protocol);
+                Assert.False(packet.Report.IsTravelling);
+            }
+        }
+
+        [Theory]
+        [InlineData(false)] [InlineData(true)]
+        public void HostConsumptionSettingAndExpandedCoffeeCountRoundTrip(bool disabled)
+        {
+            var copy = RoundTrip(new SurvivalStatePacket
+            {
+                Message = new SurvivalStateMessage
+                {
+                    DisableNeedsConsumption = disabled,
+                    State = new SurvivalState { CoffeeUsesSinceSleep = 25 }
+                }
+            }, new SurvivalStatePacket());
+            Assert.Equal(disabled, copy.Message.DisableNeedsConsumption);
+            Assert.Equal(25, copy.Message.State.CoffeeUsesSinceSleep);
         }
 
         private static T RoundTrip<T>(T source, T destination)

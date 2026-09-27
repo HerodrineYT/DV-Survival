@@ -15,7 +15,7 @@ namespace DVSurvival.Tests
             var portions = new Dictionary<string, PartialProvisionRecord>();
             var consumed = new HashSet<string>();
             var state = new SurvivalState();
-            for (int cup = 0; cup < 11; cup++)
+            for (int cup = 0; cup < 26; cup++)
             {
                 state.Rest = 0;
                 var id = Guid.NewGuid().ToString("D");
@@ -23,12 +23,12 @@ namespace DVSurvival.Tests
                     state, ProvisionKind.Coffee, out var used);
                 Assert.Equal(SurvivalResultCode.Success, result);
                 Assert.Equal(usedPerCup, used);
-                Assert.Equal(Math.Min(cup + 1, 10), state.CoffeeUsesSinceSleep);
-                Assert.Equal(16f * Math.Max(0, 10 - cup) / 10f * usedPerCup / 1000f, state.Rest, 4);
+                Assert.Equal(Math.Min(cup + 1, 25), state.CoffeeUsesSinceSleep);
+                Assert.Equal(16f * Math.Max(0, 20 - Math.Max(0, cup - 4)) / 20f * usedPerCup / 1000f, state.Rest, 4);
                 Assert.Equal(usedPerCup, portions[id].UsedUnits);
             }
             // None of the cups was empty: finishing is not the tolerance trigger.
-            Assert.Equal(11, portions.Count);
+            Assert.Equal(26, portions.Count);
             Assert.Empty(consumed);
             Assert.Equal(0f, SurvivalSimulator.GetCoffeeRestMultiplier(state));
         }
@@ -70,7 +70,7 @@ namespace DVSurvival.Tests
             PartialProvisionLedger.Consume(restoredPortions, consumed, Guid.NewGuid().ToString("D"),
                 950, restoredState, ProvisionKind.Coffee, out _);
             Assert.Equal(4, restoredState.CoffeeUsesSinceSleep);
-            Assert.Equal(16f * .7f * .95f, restoredState.Rest, 4);
+            Assert.Equal(16f * .95f, restoredState.Rest, 4);
             Assert.Empty(consumed);
         }
     }

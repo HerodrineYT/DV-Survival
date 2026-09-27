@@ -5,6 +5,7 @@ namespace DVSurvival.Core
     [Serializable]
     public sealed class SurvivalTuning
     {
+        public bool DisableNeedsConsumption = false;
         public float NeedsRateMultiplier = 1f;
         public float DamageMultiplier = 1f;
         public float HungerHoursFromFull = 18f;

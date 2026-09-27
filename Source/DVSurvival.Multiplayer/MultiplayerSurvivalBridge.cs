@@ -157,7 +157,8 @@ namespace DVSurvival.Multiplayer
         {
             if (!enabled || disposed || client == null || !IsSessionActive || IsAuthority || report == null)
                 return;
-            client.SendSerializablePacketToServer(new SurvivalEnvironmentPacket { Report = report }, false);
+            // Travel transitions must reach the host before a later time-skip/action packet.
+            client.SendSerializablePacketToServer(new SurvivalEnvironmentPacket { Report = report }, true);
         }
 
         public void SendStateToPlayer(byte playerId, SurvivalStateMessage message, bool reliable)

@@ -95,6 +95,7 @@ public static class VerifyStationOffice
             Equal(-25, Number(read(inside, -25), "AmbientTemperatureCelsius"), "old origin is outdoors");
             root.SetActive(false);
             Equal(-25, Number(read(root.transform.position, -25), "AmbientTemperatureCelsius"), "unloaded room ignored");
+            VerifyStreamingCaches(assembly, game, sampler, read);
             ((IDisposable)heaters).Dispose();
             Debug.Log("STATION_OFFICE_OK: authored AO office boxes, two-room gap, house exclusion, disabled native room, rotated/scaled containment, cold22, warm30, origin shift, unload");
         }
@@ -104,6 +105,96 @@ public static class VerifyStationOffice
             UnityEngine.Object.DestroyImmediate(regularOffice); UnityEngine.Object.DestroyImmediate(house);
         }
     }
+
+    private static void VerifyStreamingCaches(Assembly assembly, Assembly game, object sampler,
+        Func<Vector3, float, object> read)
+    {
+        var offices = assembly.GetType("DVSurvival.Mod.StationOfficeVolumes", true);
+        var fireboxes = assembly.GetType("DVSurvival.Mod.FireboxRegistry", true);
+        var streamed = new GameObject("Office_3_interior(Clone)");
+        var sceneOffice = new GameObject("Office_4_interior(Clone)");
+        var loco = new GameObject("climate test firebox");
+        try
+        {
+            var officeDeadline = (float)StaticGet(offices, "nextScan");
+            if (officeDeadline - Time.realtimeSinceStartup < 20f) throw new Exception("Office reconciliation is not throttled.");
+            streamed.transform.position = new Vector3(12000, 0, 12000);
+            AddOfficeVolumes(game, streamed);
+            var controller = streamed.GetComponentInChildren(game.GetType("DV.PostProcessingVolumeAOController"), true);
+            // Invoke the same postfix registered on native OnEnable (fixture has no graphics singleton).
+            InvokeStatic(assembly.GetType("DVSurvival.Mod.RegisterOfficeClimatePatch"), "Postfix", controller);
+            var rooms = (System.Collections.IList)StaticGet(offices, "rooms");
+            int count = rooms.Count;
+            InvokeStatic(assembly.GetType("DVSurvival.Mod.RegisterOfficeClimatePatch"), "Postfix", controller);
+            Equal(count, rooms.Count, "duplicate room registration");
+            var inside = streamed.transform.TransformPoint(new Vector3(-3, 0, 0));
+            Equal(22, Number(read(inside, -25), "AmbientTemperatureCelsius"), "room registered before 30s fallback");
+            streamed.SetActive(false);
+            Equal(-25, Number(read(inside, -25), "AmbientTemperatureCelsius"), "inactive cached room");
+            streamed.SetActive(true);
+            Equal(22, Number(read(inside, -25), "AmbientTemperatureCelsius"), "reactivated cached room");
+            Equal(officeDeadline, (float)StaticGet(offices, "nextScan"), "reads do not rescan the world");
+
+            var scene = UnityEditor.SceneManagement.EditorSceneManager.NewPreviewScene();
+            sceneOffice.transform.position = new Vector3(14000, 0, 14000);
+            AddOfficeVolumes(game, sceneOffice);
+            UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene(sceneOffice, scene);
+            InvokeStatic(assembly.GetType("DVSurvival.Mod.ClimateSceneDiscovery"), "OnSceneLoaded", scene,
+                UnityEngine.SceneManagement.LoadSceneMode.Additive);
+            Equal(22, Number(read(sceneOffice.transform.TransformPoint(new Vector3(3, 0, 0)), -25),
+                "AmbientTemperatureCelsius"), "disabled controller found on sector load");
+
+            var entries = (System.Collections.IList)InvokeStatic(fireboxes, "GetLoaded");
+            int before = entries.Count;
+            loco.transform.position = new Vector3(16000, 0, 16000);
+            var firebox = loco.AddComponent(game.GetType("DV.Simulation.Cars.FireboxSimController"));
+            SetPort(firebox, "fireboxCapacityPort", 1f);
+            SetPort(firebox, "fireboxContentsPort", .5f);
+            SetPort(firebox, "fireboxDoorPort", 0f);
+            SetPort(firebox, "combustionRateNormalizedPort", 1f);
+            SetPort(firebox, "fireOnPort", 1f);
+            var patch = assembly.GetType("DVSurvival.Mod.RegisterFireboxClimatePatch");
+            InvokeStatic(patch, "Postfix", firebox);
+            InvokeStatic(patch, "Postfix", firebox);
+            Equal(before + 1, entries.Count, "one cached firebox per locomotive");
+            Equal(-16.6f, Number(read(loco.transform.position, -25), "AmbientTemperatureCelsius"), "nearby closed firebox heat");
+            SetPort(firebox, "fireboxDoorPort", 1f);
+            Equal(5f, Number(read(loco.transform.position, -25), "AmbientTemperatureCelsius"), "open firebox heat updates without rescan");
+            Equal(-25f, Number(read(loco.transform.position + Vector3.right * 8f, -25), "AmbientTemperatureCelsius"), "outside seven metre radius");
+            loco.SetActive(false);
+            // Reconciliation while pooled must not lose the object for later reuse.
+            fireboxes.GetField("nextScan", BindingFlags.NonPublic | BindingFlags.Static).SetValue(null, 0f);
+            Equal(-25f, Number(read(loco.transform.position, -25), "AmbientTemperatureCelsius"), "pooled firebox gives no heat");
+            loco.SetActive(true);
+            Equal(5f, Number(read(loco.transform.position, -25), "AmbientTemperatureCelsius"), "pooled firebox reactivation needs no Init");
+            var deadline = (float)StaticGet(fireboxes, "nextScan");
+            for (var i = 0; i < 100; i++) read(loco.transform.position, -25);
+            Equal(deadline, (float)StaticGet(fireboxes, "nextScan"), "no repeated firebox scan during sampling");
+            UnityEngine.Object.DestroyImmediate(firebox);
+            InvokeStatic(fireboxes, "GetLoaded");
+            Equal(before, entries.Count, "destroyed firebox removed");
+            Debug.Log("CLIMATE_CACHE_OK: new sector, lifecycle registration, deduplication, inactive/reactivated rooms and fireboxes, radius/door heat, destroyed entries, throttled reconciliation");
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(streamed);
+            UnityEngine.Object.DestroyImmediate(sceneOffice);
+            UnityEngine.Object.DestroyImmediate(loco);
+            InvokeStatic(offices, "Reset"); InvokeStatic(fireboxes, "Reset");
+        }
+    }
+
+    private static void SetPort(object target, string name, float value)
+    {
+        var field = target.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic);
+        var port = System.Runtime.Serialization.FormatterServices.GetUninitializedObject(field.FieldType);
+        field.FieldType.GetField("value", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public).SetValue(port, value);
+        field.SetValue(target, port);
+    }
+    private static object StaticGet(Type type, string name)
+    { return type.GetField(name, BindingFlags.Static | BindingFlags.NonPublic).GetValue(null); }
+    private static object InvokeStatic(Type type, string name, params object[] args)
+    { return type.GetMethod(name, BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public).Invoke(null, args); }
 
     private static void AddOfficeVolumes(Assembly game, GameObject parent)
     {

@@ -57,6 +57,8 @@ namespace DVSurvival.Core
     {
         public int Protocol = SurvivalConstants.ProtocolVersion;
         public uint Sequence;
+        public string SessionId = string.Empty;
+        public bool IsTravelling;
         public SurvivalEnvironment Environment = new SurvivalEnvironment();
     }
 
@@ -70,6 +72,7 @@ namespace DVSurvival.Core
         public string SessionId = string.Empty;
         public string StatusKey = string.Empty;
         public SurvivalState State = new SurvivalState();
+        public bool DisableNeedsConsumption;
         public int MealPrice;
         public int WaterPrice;
         public int CoffeePrice;

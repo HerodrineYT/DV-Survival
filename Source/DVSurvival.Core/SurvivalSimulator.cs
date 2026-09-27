@@ -22,9 +22,17 @@ namespace DVSurvival.Core
             var remaining = hours;
             while (remaining > 0f)
             {
-                var step = SleepDeprivationEffects.NextStep(state, remaining);
+                // Pausing the awake clock must also bypass its threshold step calculation:
+                // near a boundary it would repeatedly produce the same tiny step.
+                var step = tuning.DisableNeedsConsumption
+                    ? (SleepDeprivationEffects.HasExhaustion(state)
+                        ? Math.Min(remaining, state.ExhaustionHoursRemaining) : remaining)
+                    : SleepDeprivationEffects.NextStep(state, remaining);
                 AdvanceStep(state, environment, tuning, step, realSeconds >= 0 ? realSeconds * step / hours : realSeconds);
-                SleepDeprivationEffects.AdvanceClock(state, step, environment);
+                if (tuning.DisableNeedsConsumption)
+                    SleepDeprivationEffects.AdvanceSleepClock(state, step, environment);
+                else
+                    SleepDeprivationEffects.AdvanceClock(state, step, environment);
                 remaining = Math.Max(0, remaining - step);
             }
         }
@@ -33,7 +41,7 @@ namespace DVSurvival.Core
             float hours, float realSeconds)
         {
 
-            var needsHours = hours * tuning.NeedsRateMultiplier;
+            var needsHours = tuning.DisableNeedsConsumption ? 0f : hours * tuning.NeedsRateMultiplier;
             var activity = environment.Activity;
             var thermal = ComputeThermal(environment, state, tuning);
             state.Hunger -= 100f / tuning.HungerHoursFromFull * needsHours * (0.82f + activity * 0.70f);
@@ -104,7 +112,7 @@ namespace DVSurvival.Core
                     if (state.Rest >= 98f && state.Hydration >= 98f && state.CaffeineHours > 0.5f && state.BodyTemperatureCelsius >= 37f)
                         return SurvivalResultCode.NotNeeded;
                     state.Rest = Math.Min(100f, state.Rest + 16f * GetCoffeeRestMultiplier(state));
-                    state.CoffeeUsesSinceSleep = Math.Min(10, state.CoffeeUsesSinceSleep + 1);
+                    CoffeeTolerance.RegisterCup(state);
                     state.Hydration = Math.Min(100f, state.Hydration + 15f);
                     state.CaffeineHours = Math.Max(state.CaffeineHours, tuning.CoffeeDurationHours);
                     if (state.BodyTemperatureCelsius < 37f)
@@ -196,7 +204,8 @@ namespace DVSurvival.Core
                 wakeThirst |= SleepDeprivationEffects.SleepTriggersThirst(state);
                 remaining = Math.Max(0, remaining - step);
             }
-            if (wakeThirst) state.Hydration = Math.Min(10, state.Hydration);
+            if (wakeThirst && !tuning.DisableNeedsConsumption)
+                state.Hydration = Math.Min(10, state.Hydration);
             // Only an accepted sleep action resets tolerance, even if rest stays below 70%.
             state.CoffeeUsesSinceSleep = 0;
             // Rest level alone (including coffee) never clears sleep deprivation. Only one
@@ -208,7 +217,7 @@ namespace DVSurvival.Core
 
         private static void SleepStep(SurvivalState state, float hours, SurvivalEnvironment environment, SurvivalTuning tuning)
         {
-            var needsHours = hours * tuning.NeedsRateMultiplier;
+            var needsHours = tuning.DisableNeedsConsumption ? 0f : hours * tuning.NeedsRateMultiplier;
             state.Hunger -= 100f / tuning.HungerHoursFromFull * needsHours * 0.52f;
             state.Hydration -= 100f / tuning.HydrationHoursFromFull * needsHours * 0.58f * (SleepDeprivationEffects.HasExhaustion(state) ? 3f : 1f);
             state.Rest += tuning.RestoredPerSleepHour * hours;
@@ -248,8 +257,7 @@ namespace DVSurvival.Core
 
         public static float GetCoffeeRestMultiplier(SurvivalState state)
         {
-            var uses = state == null ? 0 : Math.Max(0, Math.Min(10, state.CoffeeUsesSinceSleep));
-            return (10 - uses) / 10f;
+            return CoffeeTolerance.NextRestMultiplier(state == null ? 0 : state.CoffeeUsesSinceSleep);
         }
 
         public static bool CanRun(SurvivalState state)
@@ -318,10 +326,10 @@ namespace DVSurvival.Core
             if (state.Health > 0f) return;
             state.CollapseCount++;
             state.FirstAidSecondsRemaining = 0f;
-            state.Health = 10f;
-            state.Hunger = Math.Max(10f, state.Hunger);
-            state.Hydration = Math.Max(10f, state.Hydration);
-            state.Rest = Math.Max(10f, state.Rest);
+            state.Health = 25f;
+            state.Hunger = Math.Max(25f, state.Hunger);
+            state.Hydration = Math.Max(25f, state.Hydration);
+            state.Rest = Math.Max(25f, state.Rest);
             state.BodyTemperatureCelsius = Math.Max(35.5f, Math.Min(38.5f, state.BodyTemperatureCelsius));
             state.Revision++;
         }

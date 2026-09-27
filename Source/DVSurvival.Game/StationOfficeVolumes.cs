@@ -8,36 +8,54 @@ namespace DVSurvival.Mod
     // Reuse the game's authored room volumes, not a radius around job terminals.
     internal sealed class StationOfficeVolumes
     {
-        private readonly List<BoxCollider> rooms = new List<BoxCollider>();
-        private float nextScan;
+        private static readonly List<BoxCollider> rooms = new List<BoxCollider>();
+        private static float nextScan;
+
+        // Native lifecycle callbacks register streamed rooms immediately. Reconciliation
+        // covers already-loaded rooms and third-party components bypassing those callbacks.
+        internal static void Register(PostProcessingVolumeAOController controller)
+        {
+            if (controller == null || !IsOfficeInterior(controller.transform.parent)) return;
+            foreach (var volume in controller.GetComponents<BoxCollider>())
+                if (!rooms.Contains(volume)) rooms.Add(volume);
+        }
+
+        internal static void Register(TutorialPlayerDetector detector)
+        {
+            if (detector == null || detector.detectorType != TutorialPlayerDetector.TutorialPlayerDetectorType.StationOffice)
+                return;
+            foreach (var volume in detector.GetComponentsInChildren<BoxCollider>(true))
+                if (!rooms.Contains(volume)) rooms.Add(volume);
+        }
+
+        internal static void Reset()
+        {
+            rooms.Clear();
+            nextScan = 0f;
+        }
 
         public bool Contains(Vector3 position)
         {
             if (Time.realtimeSinceStartup >= nextScan)
             {
-                nextScan = Time.realtimeSinceStartup + 3f;
-                rooms.Clear();
+                nextScan = Time.realtimeSinceStartup + 30f;
                 // Every native office interior has one or two precise AO boxes.
                 // The same component is used by homes/lost-and-found buildings,
                 // so accept only the verified office interior roots.
                 foreach (var controller in UnityEngine.Object.FindObjectsOfType<PostProcessingVolumeAOController>())
-                {
-                    if (!IsOfficeInterior(controller.transform.parent)) continue;
-                    foreach (var volume in controller.GetComponents<BoxCollider>())
-                        if (!rooms.Contains(volume)) rooms.Add(volume);
-                }
+                    Register(controller);
                 // The tutorial's LFS office also has a dedicated detector.
                 foreach (var detector in UnityEngine.Object.FindObjectsOfType<TutorialPlayerDetector>())
-                {
-                    if (detector.detectorType != TutorialPlayerDetector.TutorialPlayerDetectorType.StationOffice)
-                        continue;
-                    foreach (var volume in detector.GetComponentsInChildren<BoxCollider>(true))
-                        if (!rooms.Contains(volume)) rooms.Add(volume);
-                }
+                    Register(detector);
             }
-            foreach (var room in rooms)
-                if (Contains(room, position)) return true;
-            return false;
+            var inside = false;
+            for (var i = rooms.Count - 1; i >= 0; i--)
+            {
+                var room = rooms[i];
+                if (room == null) rooms.RemoveAt(i);
+                else if (!inside && Contains(room, position)) inside = true;
+            }
+            return inside;
         }
 
         private static bool IsOfficeInterior(Transform root)

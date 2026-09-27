@@ -55,7 +55,7 @@ namespace DVSurvival.Tests
             s.Health = 1;
             SurvivalSimulator.ApplyTrauma(s, TraumaKind.Fall, 10, 1.8f, new SurvivalTuning());
             Assert.Equal(0f, s.FirstAidSecondsRemaining);
-            Assert.Equal(10f, s.Health);
+            Assert.Equal(25f, s.Health);
         }
         [Theory]
         [InlineData(0)] [InlineData(-1)] [InlineData(float.NaN)] [InlineData(float.PositiveInfinity)]

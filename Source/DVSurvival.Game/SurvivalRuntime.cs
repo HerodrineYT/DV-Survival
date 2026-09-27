@@ -43,6 +43,12 @@ namespace DVSurvival.Mod
         private readonly Dictionary<string, float> confirmedCabHeaterStates =
             new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
         private readonly GameCalendarClock gameCalendarClock = new GameCalendarClock();
+        private readonly TravelPauseTracker travelPause = new TravelPauseTracker();
+        private readonly Dictionary<uint, HashSet<byte>> calendarTravelPauses =
+            new Dictionary<uint, HashSet<byte>>();
+        private HashSet<byte> observedTravelPause;
+        private bool localTravelPaused;
+        private float localTeleportPauseUntil;
         private readonly SleepCalendarReconciler sleepCalendar = new SleepCalendarReconciler();
         private readonly Dictionary<uint, float> calendarJumpRealSeconds =
             new Dictionary<uint, float>();
@@ -163,6 +169,7 @@ namespace DVSurvival.Mod
         {
             if (started || disposed) return;
             started = true;
+            ClimateSceneDiscovery.Start();
             WorldStreamingInit.LoadingFinished += OnWorldLoaded;
             UnloadWatcher.UnloadRequested += OnWorldUnloading;
             network.SetEnabled(true);
@@ -180,6 +187,7 @@ namespace DVSurvival.Mod
             if (!started) return;
             EndSession();
             started = false;
+            ClimateSceneDiscovery.Stop();
             WorldStreamingInit.LoadingFinished -= OnWorldLoaded;
             UnloadWatcher.UnloadRequested -= OnWorldUnloading;
             network.SetEnabled(false);
@@ -219,6 +227,7 @@ namespace DVSurvival.Mod
             }
 
             HandleAuthorityTransition();
+            RefreshLocalTravelPause();
             UpdateLocalEnvironment();
             ProcessPendingHomeRespawn();
             if (network.IsSessionActive && !network.IsSupported) return;
@@ -226,14 +235,7 @@ namespace DVSurvival.Mod
             if (network.IsSessionActive && !network.IsAuthority &&
                 Time.realtimeSinceStartup >= nextEnvironmentReport)
             {
-                nextEnvironmentReport = Time.realtimeSinceStartup + EnvironmentReportIntervalSeconds;
-                network.SendEnvironment(new SurvivalEnvironmentReport
-                {
-                    Sequence = ++environmentReportSequence,
-                    Environment = lastLocalEnvironment == null
-                        ? new SurvivalEnvironment()
-                        : lastLocalEnvironment.Clone()
-                });
+                SendLocalEnvironmentReport();
             }
 
             if (network.IsSessionActive && !network.IsAuthority)
@@ -257,6 +259,7 @@ namespace DVSurvival.Mod
                 firstAidAccumulator = 0f;
                 foreach (var pair in activeRecords)
                 {
+                    if (travelPause.IsPaused(pair.Key, Time.realtimeSinceStartup)) continue;
                     if (!FirstAidRecovery.Advance(pair.Value.State, healingSeconds)) continue;
                     SendResult(pair.Key, pair.Value.State, 0, SurvivalResultCode.None, string.Empty, false);
                     stateDirty = true;
@@ -280,7 +283,8 @@ namespace DVSurvival.Mod
                 var elapsed = simulationAccumulator;
                 simulationAccumulator = 0f;
                 var fallbackHours = ObserveAndQueueCalendar(elapsed);
-                if (fallbackHours > 0f) AdvanceAuthority(elapsed, fallbackHours);
+                if (fallbackHours > 0f) AdvanceAuthority(elapsed, fallbackHours,
+                    travelPausedPlayers: observedTravelPause);
             }
             DrainCalendarOperations(Time.realtimeSinceStartup);
             if (network.IsSessionActive && Time.realtimeSinceStartup >= nextStateBroadcast)
@@ -379,7 +383,8 @@ namespace DVSurvival.Mod
                 var realSeconds = simulationAccumulator;
                 simulationAccumulator = 0f;
                 var beforeHours = ObserveCalendar(before, realSeconds, false);
-                if (beforeHours > 0f) AdvanceAuthority(realSeconds, beforeHours);
+                if (beforeHours > 0f) AdvanceAuthority(realSeconds, beforeHours,
+                    travelPausedPlayers: observedTravelPause);
                 // A generic relayed TimeAdvance may be fast travel. It can authorize duration-only
                 // clock alignment only when the host already has a native sleep intent; the host's
                 // own call is independently identified at the native SleepCoro call site.
@@ -387,7 +392,8 @@ namespace DVSurvival.Mod
                     sleepCalendar.PendingSleepCount > 0;
                 var immediateHours = ObserveCalendar(after, 0f, true,
                     allowsDurationAlignment);
-                if (immediateHours > 0f) AdvanceAuthority(0f, immediateHours);
+                if (immediateHours > 0f) AdvanceAuthority(0f, immediateHours,
+                    travelPausedPlayers: observedTravelPause);
             }
             catch (ArgumentOutOfRangeException)
             {
@@ -545,6 +551,9 @@ namespace DVSurvival.Mod
             {
                 if (!TryPrepareSession()) return;
                 sessionReady = true;
+                // PlayerManager clears static listeners when unloading a save.
+                PlayerManager.PlayerTeleportStarted -= OnPlayerTeleportStarted;
+                PlayerManager.PlayerTeleportStarted += OnPlayerTeleportStarted;
                 simulationAccumulator = 0f;
                 nextStateBroadcast = Time.realtimeSinceStartup;
                 nextSaveCheckpoint = Time.realtimeSinceStartup + SaveCheckpointSeconds;
@@ -609,6 +618,8 @@ namespace DVSurvival.Mod
             nextTraumaTimes.Clear();
             remoteEnvironments.Clear();
             ResetCabHeaterControls();
+            travelPause.Reset();
+            localTravelPaused = false;
             confirmedCabHeaterStates.Clear();
             ClearPendingCabHeater();
             ResetCalendarReconciliation();
@@ -657,12 +668,13 @@ namespace DVSurvival.Mod
         }
 
         private void AdvanceAuthority(float realSeconds, float gameHours,
-            SleepCalendarAdvance calendarAdvance = null)
+            SleepCalendarAdvance calendarAdvance = null, HashSet<byte> travelPausedPlayers = null)
         {
             if (gameHours <= 0f) return;
             var tuning = settings.ToTuning();
             if (!network.IsSessionActive)
             {
+                if (IsTravelSimulationPaused(byte.MaxValue, travelPausedPlayers)) return;
                 SurvivalPlayerRecord local;
                 if (activeRecords.TryGetValue(byte.MaxValue, out local))
                 {
@@ -686,6 +698,7 @@ namespace DVSurvival.Mod
             foreach (var player in players)
             {
                 if (player == null || !player.IsLoaded) continue;
+                if (IsTravelSimulationPaused(player.PlayerId, travelPausedPlayers)) continue;
                 if (player.IsHost && !activeRecords.ContainsKey(player.PlayerId))
                     activeRecords[player.PlayerId] = document.GetOrCreate(settings.IdentityId,
                         player.DisplayName, tuning);
@@ -732,8 +745,11 @@ namespace DVSurvival.Mod
                 (request.Action == SurvivalActionKind.Sleep || request.Action == SurvivalActionKind.SleepWithoutTimeAdvance);
             if (sleepPresentation)
             {
+                var previewTuning = settings.ToTuning();
+                if (network.IsSessionActive && !network.IsAuthority && lastHostMessage != null)
+                    previewTuning.DisableNeedsConsumption = lastHostMessage.DisableNeedsConsumption;
                 sleepHudPreview.Begin(request.RequestId, currentState, request.Amount,
-                    lastLocalEnvironment, settings.ToTuning(), Time.realtimeSinceStartup);
+                    lastLocalEnvironment, previewTuning, Time.realtimeSinceStartup);
                 if (hud != null) hud.RefreshNow();
             }
             if (network.IsSessionActive && !network.IsAuthority)
@@ -864,7 +880,9 @@ namespace DVSurvival.Mod
             {
                 float nextTrauma;
                 float dismountMagnitude = 0f;
-                if (nextTraumaTimes.TryGetValue(playerId, out nextTrauma) &&
+                if (travelPause.IsPaused(playerId, Time.realtimeSinceStartup))
+                    result = SurvivalResultCode.NotReady;
+                else if (nextTraumaTimes.TryGetValue(playerId, out nextTrauma) &&
                     Time.realtimeSinceStartup < nextTrauma)
                     result = SurvivalResultCode.RateLimited;
                 else if (request.Trauma == TraumaKind.Fall &&
@@ -999,6 +1017,7 @@ namespace DVSurvival.Mod
                 SessionId = document == null ? string.Empty : document.SessionId,
                 StatusKey = status ?? string.Empty,
                 State = state == null ? SurvivalState.CreateDefault(tuning) : state.Clone(),
+                DisableNeedsConsumption = tuning.DisableNeedsConsumption,
                 MealPrice = GetPrice(ProvisionKind.Meal),
                 WaterPrice = GetPrice(ProvisionKind.Water),
                 CoffeePrice = GetPrice(ProvisionKind.Coffee),
@@ -1225,6 +1244,7 @@ namespace DVSurvival.Mod
             {
                 if (hud != null) hud.TriggerCollapse();
                 homeRespawn.Begin();
+                RefreshLocalTravelPause();
                 nextHomeRespawnAttempt = 0f;
                 nextRespawnWarning = Time.realtimeSinceStartup + 10f;
                 entry.Logger.Log("Death detected: returning the local player to the marked house.");
@@ -1293,7 +1313,7 @@ namespace DVSurvival.Mod
             }
             respawnTraumaGraceUntil = Time.realtimeSinceStartup + 2f;
             entry.Logger.Log("House respawn completed through native fast travel, without a travel fee.");
-            Notify(ModLocalization.Text("Вы очнулись у дома. Здоровье: 10%.", "You woke up at home. Health: 10%."));
+            Notify(ModLocalization.Text("Вы очнулись у дома. Здоровье: 25%.", "You woke up at home. Health: 25%."));
             if (impactMonitor != null) impactMonitor.ResetTracking();
             UpdateLocalEnvironment(true);
         }
@@ -1348,6 +1368,8 @@ namespace DVSurvival.Mod
 
         private void OnPlayerDisconnected(byte playerId)
         {
+            travelPause.Remove(playerId);
+            foreach (var paused in calendarTravelPauses.Values) paused.Remove(playerId);
             dismountEvidence.Remove(playerId);
             actionRequests.Remove(playerId);
             activeRecords.Remove(playerId);
@@ -1364,7 +1386,8 @@ namespace DVSurvival.Mod
         {
             if (!sessionReady || !network.IsAuthority || player == null || report == null ||
                 report.Protocol != SurvivalConstants.ProtocolVersion || report.Environment == null ||
-                !report.Environment.IsValid())
+                !report.Environment.IsValid() || document == null ||
+                !string.Equals(report.SessionId, document.SessionId, StringComparison.Ordinal))
                 return;
             RemoteEnvironmentRecord existing;
             if (remoteEnvironments.TryGetValue(player.PlayerId, out existing) &&
@@ -1375,6 +1398,7 @@ namespace DVSurvival.Mod
             sample.Clamp();
             remoteEnvironments[player.PlayerId] = new RemoteEnvironmentRecord(
                 report.Sequence, Time.realtimeSinceStartup, sample);
+            travelPause.Update(player.PlayerId, report.IsTravelling, Time.realtimeSinceStartup);
         }
 
         private SurvivalEnvironment GetRemoteEnvironment(SurvivalPlayerInfo player, float gameHours,
@@ -1427,6 +1451,45 @@ namespace DVSurvival.Mod
         private void OnPlayerTeleportStarted()
         {
             if (impactMonitor != null) impactMonitor.ResetTracking();
+            localTeleportPauseUntil = Time.realtimeSinceStartup + 1f;
+            RefreshLocalTravelPause();
+        }
+
+        // Also called before TimeAdvance: native fast travel clears its flag immediately after
+        // that call, so relying only on the next Update would miss a same-frame calendar skip.
+        internal void RefreshLocalTravelPause()
+        {
+            if (!sessionReady) return;
+            var now = Time.realtimeSinceStartup;
+            var paused = FastTravelController.IsFastTravelling || LoadingScreenManager.IsLoading ||
+                homeRespawn.Pending || now < localTeleportPauseUntil;
+            var changed = localTravelPaused != paused;
+            localTravelPaused = paused;
+            travelPause.Update(network.IsSessionActive ? network.LocalPlayerId : byte.MaxValue, paused, now);
+            if (changed)
+            {
+                if (!paused) nextLocalEnvironmentUpdate = 0f;
+                SendLocalEnvironmentReport();
+            }
+        }
+
+        private void SendLocalEnvironmentReport()
+        {
+            if (!network.IsSessionActive || network.IsAuthority || !network.IsSupported) return;
+            nextEnvironmentReport = Time.realtimeSinceStartup + EnvironmentReportIntervalSeconds;
+            network.SendEnvironment(new SurvivalEnvironmentReport
+            {
+                Sequence = ++environmentReportSequence,
+                SessionId = lastHostMessage == null ? string.Empty : lastHostMessage.SessionId,
+                IsTravelling = localTravelPaused,
+                Environment = lastLocalEnvironment == null
+                    ? new SurvivalEnvironment() : lastLocalEnvironment.Clone()
+            });
+        }
+
+        private static bool IsTravelSimulationPaused(byte playerId, HashSet<byte> captured)
+        {
+            return captured != null && captured.Contains(playerId);
         }
 
         private void OnSaveDataUpdate(SaveGameData data)
@@ -1507,6 +1570,9 @@ namespace DVSurvival.Mod
             nextTraumaTimes.Clear();
             remoteEnvironments.Clear();
             ResetCalendarReconciliation();
+            travelPause.Reset();
+            localTravelPaused = false;
+            localTeleportPauseUntil = 0f;
             simulationAccumulator = 0f;
             nextLocalEnvironmentUpdate = 0f;
             nextEnvironmentReport = 0f;
@@ -1532,6 +1598,7 @@ namespace DVSurvival.Mod
                 return ObserveCalendar(current, fallbackRealSeconds, false, false);
             gameCalendarClock.Reset();
             var dayMinutes = environment.GetDayLengthMinutes();
+            observedTravelPause = travelPause.Capture(Time.realtimeSinceStartup, false);
             return dayMinutes > 0f
                 ? Mathf.Clamp(fallbackRealSeconds * 24f / (dayMinutes * 60f), 0f, 24f)
                 : 0f;
@@ -1556,6 +1623,7 @@ namespace DVSurvival.Mod
                 GameCalendarClock.IsDiscontinuousAdvance(gameHours,
                     fallbackRealSeconds, environment.GetDayLengthMinutes()) ||
                 sleepCalendar.IntersectsPendingSleep(beforeTicks, afterTicks);
+            observedTravelPause = travelPause.Capture(Time.realtimeSinceStartup, needsCorrelation);
             var queued = needsCorrelation
                 ? sleepCalendar.TryRecordJump(jump)
                 : sleepCalendar.PendingJumpCount > 0 &&
@@ -1563,6 +1631,7 @@ namespace DVSurvival.Mod
             if (queued)
             {
                 calendarJumpRealSeconds[sequence] = Math.Max(0f, fallbackRealSeconds);
+                if (observedTravelPause != null) calendarTravelPauses[sequence] = observedTravelPause;
                 return 0f;
             }
             return (float)gameHours;
@@ -1599,9 +1668,14 @@ namespace DVSurvival.Mod
                         out sourceRealSeconds))
                         sourceRealSeconds = 0f;
                     var segmentRealSeconds = sourceRealSeconds * (float)advance.SourceFraction;
-                    AdvanceAuthority(segmentRealSeconds, (float)advance.TotalHours, advance);
+                    HashSet<byte> paused;
+                    calendarTravelPauses.TryGetValue(advance.SourceJumpSequence, out paused);
+                    AdvanceAuthority(segmentRealSeconds, (float)advance.TotalHours, advance, paused);
                     if (advance.IsFinalSourceSegment)
+                    {
                         calendarJumpRealSeconds.Remove(advance.SourceJumpSequence);
+                        calendarTravelPauses.Remove(advance.SourceJumpSequence);
+                    }
                 }
                 else if (operation.Kind == SleepCalendarOperationKind.CommitSleep)
                     CommitPendingNativeSleep(operation.Sleep);
@@ -1704,6 +1778,8 @@ namespace DVSurvival.Mod
 
         private void ResetCalendarReconciliation()
         {
+            calendarTravelPauses.Clear();
+            observedTravelPause = null;
             sleepCalendar.Reset();
             calendarJumpRealSeconds.Clear();
             pendingNativeSleeps.Clear();

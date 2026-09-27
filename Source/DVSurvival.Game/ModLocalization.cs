@@ -89,8 +89,8 @@ namespace DVSurvival.Mod
                     "До +50% воды; охлаждает на 0,2 °C, не ниже 36 °C. Пейте, удерживая ЛКМ (3 с на бутылку). Остаток сохраняется.",
                     "Up to +50% hydration; cools by 0.2 °C, no lower than 36 °C. Hold LMB to drink (3 s per bottle). Remainder is kept.");
                 case ProvisionKind.Coffee: return Text(
-                    "До +16% сна, +15% воды; +0,2 °C, не выше 37 °C. Удерживайте ЛКМ (3 с); остаток сохраняется. С первого глотка новой чашки: −10% эффективности до сна.",
-                    "Up to +16% rest, +15% hydration; +0.2 °C, capped at 37 °C. Hold LMB (3 s); remainder is kept. Each new cup's first sip: −10% effectiveness until sleep.");
+                    "До +16% сна, +15% воды; +0,2 °C, не выше 37 °C. ЛКМ: пить частями (3 с). Первые 5 чашек: 100%; с 6-й: −5% за чашку до сна. Учёт с первого глотка.",
+                    "Up to +16% rest, +15% water; +0.2 °C, max 37 °C. LMB: sip (3 s). First 5 cups: 100%; from cup 6: −5% per cup until sleep. Counts from first sip.");
                 case ProvisionKind.FirstAid: return Text(
                     "До +40% здоровья за 20 с. ЛКМ: подготовка 8 с, затем расход целиком. ПКМ/убрать — отмена подготовки. Лечение не складывается.",
                     "Up to +40% health over 20 s. LMB: 8 s preparation, then uses the whole kit. RMB/put away cancels preparation. Healing does not stack.");
@@ -107,7 +107,7 @@ namespace DVSurvival.Mod
             {
                 case ProvisionKind.Meal: return Key("Up to +45% food. Hold LMB to eat (5 s per portion). Release to keep the remainder.");
                 case ProvisionKind.Water: return Key("Up to +50% hydration; cools by 0.2 °C, no lower than 36 °C. Hold LMB to drink (3 s per bottle). Remainder is kept.");
-                case ProvisionKind.Coffee: return Key("Up to +16% rest, +15% hydration; +0.2 °C, capped at 37 °C. Hold LMB (3 s); remainder is kept. Each new cup's first sip: −10% effectiveness until sleep.");
+                case ProvisionKind.Coffee: return Key("Up to +16% rest, +15% water; +0.2 °C, max 37 °C. LMB: sip (3 s). First 5 cups: 100%; from cup 6: −5% per cup until sleep. Counts from first sip.");
                 case ProvisionKind.FirstAid: return Key("Up to +40% health over 20 s. LMB: 8 s preparation, then uses the whole kit. RMB/put away cancels preparation. Healing does not stack.");
                 case ProvisionKind.HeatPack: return Key("Sets body to 37 °C; temporary cold protection. LMB: apply for 3 s, uses the whole pack. RMB/put away cancels.");
                 default: return ProvisionKey(kind);
@@ -153,8 +153,8 @@ namespace DVSurvival.Mod
                     case "cab_heater_off": return Text("Отопитель кабины выключен.",
                         "Cab heater switched off.");
                     case "death": return Text(
-                        "Вы погибли, потеряли $5000 и очнулись дома с 10% здоровья.",
-                        "You died, lost $5000, and woke up at home with 10% health.");
+                        "Вы погибли, потеряли $5000 и очнулись дома с 25% здоровья.",
+                        "You died, lost $5000, and woke up at home with 25% health.");
                     case "identity_in_use": return Text("ID игрока уже используется в этой сессии.", "Player identity is already in use in this session.");
                 }
             }

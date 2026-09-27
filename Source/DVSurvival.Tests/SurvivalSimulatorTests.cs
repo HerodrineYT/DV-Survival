@@ -107,8 +107,8 @@ namespace DVSurvival.Tests
             SurvivalSimulator.Advance(state, Mild(1f), tuning);
 
             Assert.Equal(1u, state.CollapseCount);
-            Assert.Equal(10f, state.Health);
-            Assert.True(state.Hydration >= 10f);
+            Assert.Equal(25f, state.Health);
+            Assert.True(state.Hydration >= 25f);
         }
 
         [Fact]

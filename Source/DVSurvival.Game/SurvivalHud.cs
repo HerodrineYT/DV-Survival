@@ -11,6 +11,7 @@ namespace DVSurvival.Mod
     {
         private SurvivalRuntime runtime;
         private SurvivalModSettings settings;
+        private readonly NativeLocoHudVisibility locoHudVisibility = new NativeLocoHudVisibility();
         private GUIStyle labelStyle;
         private GUIStyle plateStyle;
         private GUIStyle hudTextStyle;
@@ -98,7 +99,7 @@ namespace DVSurvival.Mod
             return runtime != null && settings != null && runtime.IsSessionReady &&
                 WorldStreamingInit.IsLoaded && !UnloadWatcher.isUnloading &&
                 !LoadingScreenManager.IsLoading && !FastTravelController.IsFastTravelling &&
-                !runtime.IsHomeTravelPending;
+                !runtime.IsHomeTravelPending && !locoHudVisibility.BlocksSurvivalHud();
         }
 
         private void OnGUI()

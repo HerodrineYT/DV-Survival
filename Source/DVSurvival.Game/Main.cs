@@ -108,7 +108,8 @@ namespace DVSurvival.Mod
             GUILayout.Label(ModLocalization.Text("Survival Needs — персональные потребности",
                 "Survival Needs — per-player needs"));
             GUILayout.Label(Runtime == null ? string.Empty : Runtime.NetworkStatus);
-            if (Runtime != null && !string.IsNullOrEmpty(Runtime.CabinStatus)) GUILayout.Label(Runtime.CabinStatus);
+            var cabinStatus = Runtime == null ? string.Empty : Runtime.CabinStatus;
+            if (!string.IsNullOrEmpty(cabinStatus)) GUILayout.Label(cabinStatus);
             if (Runtime != null && Runtime.CurrentState != null)
             {
                 var state = Runtime.CurrentState;
@@ -149,6 +150,12 @@ namespace DVSurvival.Mod
             GUILayout.Label(ModLocalization.Text(
                 "Следующие параметры задаёт хост и они едины для расчёта всех игроков.",
                 "The host controls the following simulation values for all players."));
+            settings.DisableNeedsConsumption = GUILayout.Toggle(settings.DisableNeedsConsumption,
+                ModLocalization.Text("Отключить расход потребностей", "Disable needs consumption"));
+            if (settings.DisableNeedsConsumption)
+                GUILayout.Label(ModLocalization.Text(
+                    "Сытость, вода и сон не расходуются, новый недосып не накапливается. Восстановление, температура и урон работают как обычно. В MP действует настройка хоста.",
+                    "Food, water and rest do not drain; new sleep deprivation does not accumulate. Recovery, temperature and damage work normally. In MP, the host's setting applies."));
             GUILayout.Label(ModLocalization.Text("Скорость потребностей: ", "Needs rate: ") +
                 ModLocalization.Number(settings.NeedsRateMultiplier, "F2") + "×");
             settings.NeedsRateMultiplier = GUILayout.HorizontalSlider(settings.NeedsRateMultiplier, 0.25f, 3f);
@@ -205,8 +212,8 @@ namespace DVSurvival.Mod
                 "Бег недоступен: здоровье < 40%, сытость < 25%, вода < 30% или сон < 30%.",
                 "Sprinting is disabled below 40% health, 25% food, 30% water or 30% rest."));
             GUILayout.Label(ModLocalization.Text(
-                "Кофе: каждое употребление уменьшает следующую прибавку сна на 10% от исходной, до нуля. Любой успешный сон восстанавливает эффективность.",
-                "Coffee: each use reduces the next rest gain by 10% of the original, down to zero. Any successful sleep restores effectiveness."));
+                "Кофе: первые 5 чашек дают полный эффект. С шестой эффект на сон уменьшается на 5% от исходного за чашку, до нуля. Новая чашка учитывается с первого глотка. Любой успешный сон восстанавливает эффективность.",
+                "Coffee: the first 5 cups have full effect. From cup 6, rest gain drops by 5% of the original per cup, down to zero. Each new cup counts from its first sip. Any successful sleep restores effectiveness."));
             if (Runtime != null && Runtime.CurrentState != null)
                 GUILayout.Label(ModLocalization.Text("Эффективность следующего кофе для сна: ", "Next coffee rest effectiveness: ") +
                     ModLocalization.Number(SurvivalSimulator.GetCoffeeRestMultiplier(Runtime.CurrentState) * 100f, "F0") + "%");
